@@ -73,15 +73,23 @@ _REMOTE = (
     "remote", "fully remote", "work from home", "wfh", "télétravail", "en télétravail",
     "à distance", "100% remote", "100 % télétravail",
 )
+# Plain mentions, checked last: "Hybrid: 2 days onsite" is hybrid and "remote with
+# occasional on-site visits" is remote, but a bare "(Onsite)" means on-site.
+_ONSITE_PLAIN = (
+    "onsite", "on-site", "on site", "in-office", "in office", "sur place", "en présentiel",
+    "présentiel",
+)
 
 
 def infer_work_mode(title: str, description: str) -> str | None:
     """Best-effort work mode from text. None means the snippet doesn't say."""
     text = f"{title}\n{description}"
-    if find_any(text, _ONSITE):
-        return "onsite"
-    if find_any(text, _HYBRID):
-        return "hybrid"
-    if find_any(text, _REMOTE):
-        return "remote"
+    for mode, phrases in (
+        ("onsite", _ONSITE),
+        ("hybrid", _HYBRID),
+        ("remote", _REMOTE),
+        ("onsite", _ONSITE_PLAIN),
+    ):
+        if find_any(text, phrases):
+            return mode
     return None

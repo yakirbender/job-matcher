@@ -49,6 +49,10 @@ def test_metro_for(country, area, display, expected):
         ("Développeur", "Mode hybride", "hybrid"),
         ("Developer", "This is not remote. On-site only.", "onsite"),
         ("Développeur", "Pas de télétravail possible", "onsite"),
+        ("Embedded Security Software Engineer I (Onsite)", "", "onsite"),
+        ("Développeur", "Travail sur place à Laval", "onsite"),
+        ("Developer", "Hybrid: 1–2 days onsite per week", "hybrid"),
+        ("Developer", "Remote with occasional on-site visits", "remote"),
         ("Developer", "Build APIs in Python.", None),
     ],
 )

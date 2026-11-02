@@ -1,0 +1,188 @@
+# Example job-search profile. Copy to private/profile.yaml to customize it.
+#
+# Every list applies to every posting, whatever its language. Matching ignores case
+# and accents and works on whole words, and French inclusive titles are folded first:
+# "Développeur.euse", "Développeur·euse", "Concepteur(trice)" all match "développeur" /
+# "concepteur".
+
+# A title must match one of these families to count as a software role. Families are
+# checked in this order, so "Software Test Engineer" is qa, not core_dev. All families are
+# included equally; none is boosted.
+role_families:
+  qa:
+    - qa
+    - quality assurance
+    - assurance qualité
+    - tester
+    - testeur
+    - testeuse
+    - test engineer
+    - test automation
+    - automatisation des tests
+    - sdet
+  support:
+    - technical support
+    - support engineer
+    - application support
+    - support technique
+    - soutien technique
+    - analyste support
+  implementation:
+    - implementation
+    - implantation
+    - implémentation
+    - solutions engineer
+    - integration specialist
+  # Teaching-heavy technical roles.
+  training:
+    - technical trainer
+    - software trainer
+    - formateur technique
+    - formatrice technique
+    - developer advocate
+    - developer relations
+    - devrel
+  core_dev:
+    - software
+    - logiciel
+    - logiciels
+    - developer
+    - développeur
+    - développeuse
+    - programmer
+    - programmeur
+    - programmeuse
+    - full stack
+    - fullstack
+    - back-end
+    - backend
+    - back end
+    - front-end
+    - frontend
+    - front end
+    - devops
+    - site reliability
+    - sre
+    - platform engineer
+    - cloud engineer
+    - data engineer
+    - machine learning engineer
+    - ml engineer
+    - mlops
+
+seniority:
+  # Reject titles with these words, unless the title also has an entry-level word
+  # (e.g. "Associate / Staff Analyst" is kept).
+  exclude_title:
+    - senior
+    - sénior
+    - sr
+    - lead
+    - principal
+    - principale
+    - staff
+    - stf
+    - manager
+    - mgr
+    - director
+    - directeur
+    - directrice
+    - head of
+    - vice president
+    - vp
+    - architect
+    - architecte
+    - chief
+    - chef
+    - gestionnaire
+    - expert
+    - experte
+    - iii
+    - iv
+    - engineer 3
+    - developer 3
+    - programmer 3
+    - level 3
+    - level 4
+  # Entry-level wording. Title matches are strong signals; description matches are
+  # weaker, so ambiguous words ("associate", "graduate") are only checked in titles.
+  entry_level_title:
+    - junior
+    - jr
+    - entry level
+    - entry-level
+    - new grad
+    - new graduate
+    - recent graduate
+    - graduate
+    - associate
+    - apprentice
+    - engineer i
+    - developer i
+    - engineer 1
+    - developer 1
+    - level 1
+    - débutant
+    - débutante
+    - nouveau diplômé
+    - nouvelle diplômée
+    - finissant
+    - finissante
+  entry_level_description:
+    - junior
+    - entry level
+    - entry-level
+    - new grad
+    - new graduate
+    - recent graduate
+    - recent graduates
+    - débutant
+    - débutante
+    - nouveau diplômé
+    - nouvelle diplômée
+    - nouveaux diplômés
+    - finissant
+    - finissante
+    - premier emploi
+  # Reject when the snippet states more required experience than this. Postings that
+  # don't say pass, flagged as unknown (the snippet is often cut before requirements).
+  max_years_required: 2
+
+exclude:
+  title:
+    - intern
+    - internship
+    - co-op
+    - coop
+    - stage
+    - stagiaire
+  text:
+    - unpaid
+    - commission only
+    - non rémunéré
+  # Company names to drop entirely, e.g. a staffing firm that floods results.
+  companies: []
+
+locations:
+  # Jobs in these metros pass whatever their work mode. Elsewhere, only remote jobs pass
+  # (or jobs whose work mode the snippet doesn't state, flagged for review).
+  metros: [montreal, orlando, tampa, miami, florida_other]
+
+salary:
+  # Minimum acceptable salary by currency, e.g. {CAD: 55000, USD: 60000}.
+  # Only salaries the employer listed can reject a job; Adzuna's estimates never do.
+  min: null
+
+clearance:
+  # tag: label clearance requirements only (ranking handles them later).
+  # exclude_active: also reject jobs that require an already-active clearance.
+  mode: tag
+
+suspicious:
+  # Marks postings that look mass-produced or like scams, for a closer look before
+  # applying. A mark isn't proof. tag: mark only. exclude: also reject them.
+  #  - mass_template: one company posts the same text with only the job title swapped,
+  #    across at least min_template_titles different titles
+  #  - scam_phrase: upfront/training fees, gift cards, interviews over WhatsApp/Telegram, …
+  mode: tag
+  min_template_titles: 5

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from job_matcher.models import Job, SearchSpec
+
+if TYPE_CHECKING:
+    from job_matcher.filters import FilterResult
+    from job_matcher.tagging import Tag
 
 # Each entry upgrades the schema by one version (tracked in PRAGMA user_version).
 # Never edit a shipped migration; append a new one.
@@ -75,6 +80,29 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_job_hits_region ON job_hits(region);
     """,
+    """
+    ALTER TABLE runs ADD COLUMN stopped_reason TEXT;
+
+    -- Facts extracted from each posting (milestone 2). Rebuilt by every `jm filter`.
+    CREATE TABLE tags (
+        job_id   INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        name     TEXT NOT NULL,
+        value    TEXT NOT NULL,
+        evidence TEXT,
+        PRIMARY KEY (job_id, name, value)
+    );
+    CREATE INDEX idx_tags_name_value ON tags(name, value);
+
+    CREATE TABLE filter_results (
+        job_id       INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+        passed       INTEGER NOT NULL,
+        reasons_json TEXT NOT NULL,
+        notes_json   TEXT NOT NULL,
+        profile_hash TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        evaluated_at TEXT NOT NULL
+    );
+    """,
 ]
 
 # Columns written from a Job on every insert or content update.
@@ -131,16 +159,17 @@ def finish_run(
     updated: int,
     unchanged: int,
     errors: list[str],
+    stopped_reason: str | None = None,
 ) -> None:
     with conn:
         conn.execute(
             """
             UPDATE runs SET finished_at = ?, status = ?, requests = ?, jobs_new = ?,
-                jobs_updated = ?, jobs_unchanged = ?, errors_json = ?
+                jobs_updated = ?, jobs_unchanged = ?, errors_json = ?, stopped_reason = ?
             WHERE id = ?
             """,
             (utcnow(), status, requests, new, updated, unchanged,
-             json.dumps(errors, ensure_ascii=False), run_id),
+             json.dumps(errors, ensure_ascii=False), stopped_reason, run_id),
         )
 
 
@@ -246,6 +275,149 @@ def record_hit(
         """,
         (job_id, run_id, spec.region, spec.term_group, spec.term, now or utcnow()),
     )
+
+
+def row_to_job(row: sqlite3.Row) -> Job:
+    return Job(
+        source=row["source"],
+        source_id=row["source_id"],
+        title=row["title"],
+        url=row["url"],
+        country=row["country"],
+        description=row["description"],
+        company=row["company"],
+        location_display=row["location_display"],
+        location_area=json.loads(row["location_area_json"]),
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        salary_min=row["salary_min"],
+        salary_max=row["salary_max"],
+        salary_currency=row["salary_currency"],
+        salary_is_predicted=bool(row["salary_is_predicted"]),
+        contract_type=row["contract_type"],
+        contract_time=row["contract_time"],
+        category=row["category"],
+        posted_at=row["posted_at"],
+        raw=json.loads(row["raw_json"]),
+        metro=row["metro"],
+        work_mode=row["work_mode"],
+    )
+
+
+def update_derived(
+    conn: sqlite3.Connection, job_id: int, *, metro: str | None, work_mode: str | None
+) -> None:
+    conn.execute(
+        "UPDATE jobs SET metro = ?, work_mode = ? WHERE id = ?", (metro, work_mode, job_id)
+    )
+
+
+def iter_jobs(conn: sqlite3.Connection) -> Iterator[tuple[sqlite3.Row, Job]]:
+    for row in conn.execute("SELECT * FROM jobs ORDER BY id").fetchall():
+        yield row, row_to_job(row)
+
+
+# --- screening (tags + filters) --------------------------------------------
+
+
+def save_screening(
+    conn: sqlite3.Connection,
+    job_id: int,
+    tags: Iterable[Tag],
+    result: FilterResult,
+    *,
+    profile_hash: str,
+    content_hash: str,
+    now: str | None = None,
+) -> None:
+    """Replace a job's tags and filter result. The caller commits."""
+    conn.execute("DELETE FROM tags WHERE job_id = ?", (job_id,))
+    conn.executemany(
+        "INSERT OR IGNORE INTO tags (job_id, name, value, evidence) VALUES (?, ?, ?, ?)",
+        [(job_id, t.name, t.value, t.evidence) for t in tags],
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO filter_results
+            (job_id, passed, reasons_json, notes_json, profile_hash, content_hash, evaluated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_id,
+            int(result.passed),
+            json.dumps([asdict(r) for r in result.reasons], ensure_ascii=False),
+            json.dumps([asdict(r) for r in result.notes], ensure_ascii=False),
+            profile_hash,
+            content_hash,
+            now or utcnow(),
+        ),
+    )
+
+
+def job_tags(conn: sqlite3.Connection, job_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT name, value, evidence FROM tags WHERE job_id = ? ORDER BY name", (job_id,)
+    ).fetchall()
+
+
+def screened_jobs(
+    conn: sqlite3.Connection,
+    *,
+    passed: bool,
+    reason: str | None = None,
+    metro: str | None = None,
+    employment: str | None = None,
+    limit: int = 50,
+) -> list[sqlite3.Row]:
+    """Screened jobs, newest first, with their key tags flattened into columns."""
+    sql = """
+        SELECT j.id, j.title, j.company, j.metro, j.work_mode, j.posted_at,
+               f.reasons_json, f.notes_json,
+               (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'experience_years')
+                   AS experience,
+               (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'french') AS french,
+               (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'clearance')
+                   AS clearance,
+               (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'role_family')
+                   AS role_family,
+               (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'entry_level')
+                   AS entry_level,
+               (SELECT group_concat(value, '+') FROM tags t
+                WHERE t.job_id = j.id AND t.name = 'suspicious') AS suspicious,
+               COALESCE((SELECT value FROM tags t
+                         WHERE t.job_id = j.id AND t.name = 'employment'), 'unknown')
+                   AS employment
+        FROM jobs j JOIN filter_results f ON f.job_id = j.id
+        WHERE f.passed = ?
+    """
+    params: list[object] = [int(passed)]
+    if employment:
+        sql += " AND COALESCE((SELECT value FROM tags t WHERE t.job_id = j.id"
+        sql += " AND t.name = 'employment'), 'unknown') = ?"
+        params.append(employment)
+    if reason:
+        sql += " AND EXISTS (SELECT 1 FROM json_each(f.reasons_json) r"
+        sql += " WHERE json_extract(r.value, '$.code') = ?)"
+        params.append(reason)
+    if metro:
+        sql += " AND j.metro = ?"
+        params.append(metro)
+    sql += " ORDER BY j.posted_at DESC LIMIT ?"
+    params.append(limit)
+    return conn.execute(sql, params).fetchall()
+
+
+def screening_summary(conn: sqlite3.Connection) -> dict[str, object]:
+    passed = conn.execute("SELECT COUNT(*) FROM filter_results WHERE passed = 1").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) FROM filter_results").fetchone()[0]
+    reasons = conn.execute(
+        """
+        SELECT json_extract(r.value, '$.code'), COUNT(DISTINCT f.job_id)
+        FROM filter_results f, json_each(f.reasons_json) r
+        GROUP BY 1 ORDER BY 2 DESC
+        """
+    ).fetchall()
+    return {"total": total, "passed": passed, "reasons": [tuple(r) for r in reasons]}
 
 
 # --- reporting ------------------------------------------------------------

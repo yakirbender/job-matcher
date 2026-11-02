@@ -1,15 +1,19 @@
-"""Fetch stage: run searches against a source and store the results."""
+"""Pipeline stages: fetch postings from a source, then screen them against the profile."""
 
 from __future__ import annotations
 
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from job_matcher import db
+from job_matcher.filters import evaluate
 from job_matcher.location import infer_work_mode, metro_for
 from job_matcher.models import Job, SearchSpec
+from job_matcher.profile import Profile
 from job_matcher.sources.base import JobSource, SourceAuthError, SourceError, SourceQuotaError
+from job_matcher.suspicion import mass_template_tags, scam_phrase_tag
+from job_matcher.tagging import tag_job
 
 
 @dataclass
@@ -107,5 +111,52 @@ def fetch(
             updated=report.updated,
             unchanged=report.unchanged,
             errors=report.errors,
+            stopped_reason=report.stopped_reason,
         )
+    return report
+
+
+@dataclass
+class ScreenReport:
+    total: int = 0
+    passed: int = 0
+    reasons: Counter[str] = field(default_factory=Counter)
+
+
+def screen(conn: sqlite3.Connection, profile: Profile) -> ScreenReport:
+    """Tag and filter every stored job against the profile.
+
+    It's all local text matching, so every job is re-screened each time; a profile
+    change applies to old jobs too.
+    """
+    report = ScreenReport()
+    profile_hash = profile.fingerprint()
+    now = db.utcnow()
+    jobs = list(db.iter_jobs(conn))
+    # Template detection compares postings with each other, so it runs over all of them.
+    templates = mass_template_tags(
+        ((row["id"], job) for row, job in jobs), profile.suspicious.min_template_titles
+    )
+    try:
+        for row, job in jobs:
+            enrich(job)  # so improved metro/work-mode rules reach jobs fetched earlier
+            if (job.metro, job.work_mode) != (row["metro"], row["work_mode"]):
+                db.update_derived(conn, row["id"], metro=job.metro, work_mode=job.work_mode)
+            tags = tag_job(job, profile)
+            if template := templates.get(row["id"]):
+                tags.append(template)
+            if scam := scam_phrase_tag(f"{job.title}\n{job.description}"):
+                tags.append(scam)
+            result = evaluate(job, tags, profile, duplicate_of=row["duplicate_of"])
+            db.save_screening(
+                conn, row["id"], tags, result,
+                profile_hash=profile_hash, content_hash=row["content_hash"], now=now,
+            )
+            report.total += 1
+            report.passed += result.passed
+            report.reasons.update({r.code for r in result.reasons})
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
     return report
