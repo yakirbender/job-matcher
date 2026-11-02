@@ -1,8 +1,17 @@
 # job-matcher
 
 Pulls software job postings (English and French searches) for Montreal, Florida, and remote
-Canada/US roles into SQLite, then tags and filters them against a bilingual profile.
-CV-based LLM scoring comes in milestone 3.
+Canada/US roles into SQLite, tags and filters them against a bilingual profile, and scores
+the survivors against your CV with a free, local keyword scorer.
+
+## Costs
+
+| Part | Cost |
+|---|---|
+| Filtering, tagging, scoring (everything local) | Free |
+| Adzuna, trial key | Free, 25 calls total |
+| Adzuna, regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
+| LLM scoring (optional, not built) | A local model via Ollama is free; the Claude API needs prepaid credits |
 
 ## Setup
 
@@ -23,7 +32,11 @@ uv run jm fetch -r orlando --limit 3            # one region, at most 3 API call
 uv run jm fetch -r remote_ca -t "développeur junior"   # one exact term from the config
 uv run jm fetch                                 # every enabled region
 uv run jm filter                                # tag and filter every stored job
-uv run jm list                                  # jobs that passed, by full-/part-time
+uv run jm cv                                    # what's extracted from your CV
+uv run jm score                                 # score passed jobs against your CV
+uv run jm list                                  # passed jobs by score, full-/part-time
+uv run jm label                                 # write private/labels.csv for you to label
+uv run jm eval                                  # compare your labels with the scorer
 uv run jm list --employment part_time           # one employment type only
 uv run jm list --rejected                       # ...or were rejected, with reasons
 uv run jm list --reason seniority --limit 20    # rejected for one reason
@@ -119,6 +132,48 @@ postings and was wrong on at least one. "Contract with possible conversion to fu
 doesn't count as full-time. `jm list` shows full-time, part-time, either, and not-stated
 jobs as separate sections.
 
+## Scoring (`jm score`)
+
+Put your CV at `private/cv.pdf` (or `.docx`, `.md`, `.txt`); `private/` is git-ignored.
+`jm cv` shows its sections and the skills recognized, with where each appears (Skills,
+Projects, Experience). Skills come from `config/skills.yaml`; add any it misses.
+
+Scores are 0-100, rebuilt on every run, and explained line by line in `jm show <id>`:
+
+- **Skills (0-60, neutral 30):** the share of the job's named skills that are in your CV,
+  with related skills counting half (React/Vue toward Angular, Java toward Kotlin; see
+  `related_skills`). The swing from neutral is scaled by n / (n + 2) for n named skills,
+  because snippets often name only one or two: a single named skill moves it at most 10.
+- **Level (10-30):** entry-level title 30, 0-1 years 26, entry-level wording 22, 2 years 20,
+  unstated 15, stretch title ("II") 10.
+- **Adjustments** (`ranking` in `config/profile.example.yaml`): French required +8 / asset +4,
+  a bonus per metro, clearance (obtainable 0, unclear -5, active -15,
+  polygraph -5 more), suspicious -15. Role families are not boosted; related experience from
+  your CV (e.g. tutoring for training roles) is shown but not scored.
+
+Bands: 70+ strong, 50-69 possible, under 50 weak. The weights are first guesses, to be
+checked against your labels (next section).
+
+## Evaluating the scorer (`jm label`, `jm eval`)
+
+`jm label` writes `private/labels.csv` (git-ignored) with 15 scored jobs: spread across the
+score range, at most 2 per company, shuffled, and **without scores**, so they can't anchor
+you. It never overwrites an existing file unless you pass `--force`.
+
+Fill in, judging from the same title and snippet the scorer sees:
+
+- `label`: **2** apply, **1** maybe (a stretch, or not enough information), **0** skip
+  (words `apply`/`maybe`/`skip` work too)
+- `reason`: a few words ("too senior", "no Java", "not Orlando", "looks templated")
+- `opened_full_posting`: `yes` if you clicked through to the full posting
+
+`jm eval` then reports band agreement, Spearman rank correlation (1 = same order as yours,
+0 = unrelated), the mean score for each of your labels (it should fall from apply to skip),
+a label-vs-band grid, and every disagreement with your reason next to the scorer's
+explanation. Each disagreement is either a scorer mistake (fix a rule or weight) or a
+personal preference the profile doesn't capture yet. The `Scorer` interface (`scoring/base.py`) lets a local
+LLM or API scorer replace the keyword scorer later.
+
 ## Limitations
 
 - Adzuna returns only a ~500-character description snippet ending in "…". Requirements
@@ -138,6 +193,12 @@ jobs as separate sections.
 - Ambiguous titles ("Systems Engineer", "Integration Engineer", "Platform Infrastructure
   Engineer") don't match a role family and are rejected; add terms to `role_families` to
   keep them. Roman-numeral II ("Software Engineer II") is kept; III and above are rejected.
+- The CV reader treats any short line containing a heading word ("Skills", "Projects",
+  "Tools", "Experience", ...) as a section heading, so an unusual line can be filed under
+  the wrong section. That only changes the "found in" labels in `jm cv`, not scores.
+- Keyword scoring only sees words. It can't tell that a project shows a skill unless the
+  skill is named, and short snippets keep most scores near the middle (no job reached 70 on
+  the first 35 scored).
 
 ## Development
 

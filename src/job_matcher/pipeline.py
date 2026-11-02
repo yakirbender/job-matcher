@@ -11,6 +11,7 @@ from job_matcher.filters import evaluate
 from job_matcher.location import infer_work_mode, metro_for
 from job_matcher.models import Job, SearchSpec
 from job_matcher.profile import Profile
+from job_matcher.scoring.base import Scorer
 from job_matcher.sources.base import JobSource, SourceAuthError, SourceError, SourceQuotaError
 from job_matcher.suspicion import mass_template_tags, scam_phrase_tag
 from job_matcher.tagging import tag_job
@@ -117,6 +118,37 @@ def fetch(
 
 
 @dataclass
+class ScoreReport:
+    scored: int = 0
+    bands: Counter[str] = field(default_factory=Counter)  # strong / possible / weak
+
+
+def band(score: int) -> str:
+    return "strong" if score >= 70 else "possible" if score >= 50 else "weak"
+
+
+def score(
+    conn: sqlite3.Connection, scorer: Scorer, *, cv_hash: str, profile: Profile
+) -> ScoreReport:
+    """Score every job that passed the filters. Replaces this scorer's earlier scores, so
+    jobs that no longer pass lose theirs."""
+    report = ScoreReport()
+    results = [(job_id, scorer.score(job, tags)) for job_id, job, tags in db.passed_jobs(conn)]
+    try:
+        db.replace_scores(
+            conn, scorer.name, scorer.version, results,
+            cv_hash=cv_hash, profile_hash=profile.fingerprint(),
+        )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    report.scored = len(results)
+    report.bands.update(band(r.score) for _, r in results)
+    return report
+
+
+@dataclass
 class ScreenReport:
     total: int = 0
     passed: int = 0
@@ -155,6 +187,7 @@ def screen(conn: sqlite3.Connection, profile: Profile) -> ScreenReport:
             report.total += 1
             report.passed += result.passed
             report.reasons.update({r.code for r in result.reasons})
+        db.drop_scores_for_rejected(conn)
         conn.commit()
     except BaseException:
         conn.rollback()

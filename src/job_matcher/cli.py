@@ -13,9 +13,18 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from job_matcher import db, pipeline
+from job_matcher import db, labels, pipeline
 from job_matcher.config import DEFAULT_CONFIG_PATH, Settings, load_search_config
+from job_matcher.cv import (
+    CvError,
+    CvProfile,
+    Vocabulary,
+    default_cv_path,
+    load_cv,
+    load_vocabulary,
+)
 from job_matcher.profile import DEFAULT_PROFILE_PATH, load_profile
+from job_matcher.scoring import KeywordScorer
 from job_matcher.sources import SourceAuthError, SourceError, build_source
 
 app = typer.Typer(no_args_is_help=True, help="Fetch, filter, and score software job postings.")
@@ -155,6 +164,155 @@ def filter_jobs(profile_path: ProfileOption = DEFAULT_PROFILE_PATH) -> None:
         console.print(table)
 
 
+CvOption = Annotated[
+    Path | None,
+    typer.Option("--cv", help="CV file (.pdf, .docx, .md, .txt). Default: private/cv.*"),
+]
+
+
+def _load_cv(cv_path: Path | None) -> tuple[CvProfile, Vocabulary]:
+    path = cv_path or default_cv_path()
+    if path is None or not path.exists():
+        console.print("[red]No CV found.[/red] Put it at private/cv.pdf (or .docx/.md/.txt).")
+        raise typer.Exit(2)
+    vocabulary = load_vocabulary()
+    try:
+        return load_cv(path, vocabulary), vocabulary
+    except CvError as exc:
+        console.print(f"[red]CV error:[/red] {exc}")
+        raise typer.Exit(2) from None
+
+
+@app.command()
+def cv(cv_path: CvOption = None) -> None:
+    """Show what's extracted from your CV: sections and recognized skills."""
+    profile, _ = _load_cv(cv_path)
+    console.print(f"Sections: {', '.join(k for k, v in profile.sections.items() if v)}")
+    table = Table("Skill", "Found in", title=f"{len(profile.skills)} recognized skills")
+    for skill, where in profile.skills.items():
+        table.add_row(skill, ", ".join(where))
+    console.print(table)
+    console.print("Missing a skill? Add it to config/skills.yaml.")
+
+
+@app.command("score")
+def score_jobs(
+    cv_path: CvOption = None, profile_path: ProfileOption = DEFAULT_PROFILE_PATH
+) -> None:
+    """Score every job that passed `jm filter` against your CV (free, local)."""
+    cv_profile, vocabulary = _load_cv(cv_path)
+    profile = load_profile(profile_path)
+    scorer = KeywordScorer(cv_profile, profile, vocabulary)
+    settings = Settings.from_env()
+    conn = db.connect(settings.db_path)
+    try:
+        report = pipeline.score(conn, scorer, cv_hash=cv_profile.fingerprint, profile=profile)
+    finally:
+        conn.close()
+    b = report.bands
+    console.print(
+        f"Scored {report.scored} jobs with the {scorer.name} scorer: "
+        f"{b['strong']} strong (70+), {b['possible']} possible (50-69), {b['weak']} weak."
+    )
+    if not report.scored:
+        console.print("Nothing to score; run `jm filter` first.")
+
+
+LabelsOption = Annotated[Path, typer.Option("--file", "-f", help="Labels CSV.")]
+
+
+@app.command("label")
+def label_export(
+    count: Annotated[int, typer.Option(min=2, help="How many jobs to label.")] = 15,
+    path: LabelsOption = labels.DEFAULT_LABELS_PATH,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace an existing labels file.")
+    ] = False,
+) -> None:
+    """Write a file of scored jobs for you to label (scores hidden, order shuffled)."""
+    settings = Settings.from_env()
+    conn = db.connect(settings.db_path)
+    try:
+        rows = db.scored_jobs(conn)
+    finally:
+        conn.close()
+    if not rows:
+        console.print("No scored jobs yet; run `jm filter` and `jm score` first.")
+        raise typer.Exit(1)
+    picked = labels.sample_for_labeling(rows, count)
+    try:
+        labels.write_label_file(path, picked, overwrite=force)
+    except FileExistsError as exc:
+        console.print(f"[yellow]{exc}.[/yellow] Use --force to replace it.")
+        raise typer.Exit(1) from None
+    console.print(
+        f"Wrote {len(picked)} jobs to {path} (from {len(rows)} scored, at most 2 per company).\n"
+        "Fill in the `label` column: 2 = apply, 1 = maybe, 0 = skip. Add a short `reason`, and\n"
+        "put yes in `opened_full_posting` if you clicked through. Then run `jm eval`."
+    )
+
+
+@app.command("eval")
+def label_eval(path: LabelsOption = labels.DEFAULT_LABELS_PATH) -> None:
+    """Compare your labels with the scorer: agreement, rank correlation, disagreements."""
+    if not path.exists():
+        console.print(f"No labels file at {path}; run `jm label` first.")
+        raise typer.Exit(1)
+    parsed = labels.read_labels(path)
+    for problem in parsed.invalid:
+        console.print(f"[yellow]Skipped[/yellow] {problem}")
+    if not parsed.labels:
+        console.print(f"No labels filled in yet ({parsed.unlabeled} rows still blank).")
+        raise typer.Exit(1)
+
+    settings = Settings.from_env()
+    conn = db.connect(settings.db_path)
+    try:
+        scored = {r["id"]: r for r in db.scored_jobs(conn)}
+    finally:
+        conn.close()
+    report = labels.evaluate(parsed.labels, scored)
+
+    console.print(
+        f"Compared {report.compared} labeled jobs"
+        + (f" ({parsed.unlabeled} still blank)" if parsed.unlabeled else "")
+        + (f"; {len(report.missing_scores)} no longer scored: {report.missing_scores}"
+           if report.missing_scores else "") + "."
+    )
+    if not report.compared:
+        return
+    rho = "n/a (no variation)" if report.spearman is None else f"{report.spearman:+.2f}"
+    console.print(
+        f"Band agreement: {report.band_agreement:.0%}   "
+        f"Rank correlation (Spearman): {rho}   (1 = same order, 0 = unrelated)"
+    )
+    means = ", ".join(f"{labels.LABEL_NAMES[k]} {v:.0f}"
+                      for k, v in sorted(report.mean_score_by_label.items(), reverse=True))
+    console.print(f"Mean score by your label: {means}  (should fall from apply to skip)")
+
+    grid = Table("Your label", "Scorer: strong 70+", "possible 50-69", "weak <50",
+                 title="Your label vs scorer band")
+    for lab in (2, 1, 0):
+        grid.add_row(labels.LABEL_NAMES[lab],
+                     *(str(report.confusion.get((lab, band), 0)) for band in (2, 1, 0)))
+    console.print(grid)
+
+    if report.disagreements:
+        table = Table("ID", "Title", "You", "Score", "Your reason", "Scorer's first lines",
+                      title="Disagreements, biggest first")
+        for d in report.disagreements:
+            explanation = escape(" | ".join(d.explanation[:2]))
+            table.add_row(str(d.job_id), escape(d.title[:40]), labels.LABEL_NAMES[d.label],
+                          str(d.score), escape(d.reason[:40]), explanation)
+        console.print(table)
+    if max(r["score"] for r in scored.values()) < 70:
+        console.print(
+            "[yellow]Note:[/yellow] no scored job reaches 70, so every 'apply' counts as a band "
+            "disagreement. Until the thresholds or weights change, the rank correlation and "
+            "mean score by label are the fairer measures."
+        )
+
+
 @app.command("list")
 def list_jobs(
     rejected: Annotated[bool, typer.Option("--rejected", help="Show rejected jobs.")] = False,
@@ -196,7 +354,7 @@ EMPLOYMENT_SECTIONS = (
 
 
 def _jobs_table(rows: list, title: str, show_reasons: bool) -> Table:
-    columns = ["ID", "Title", "Company", "Metro", "Mode", "Exp", "Family", "Signals"]
+    columns = ["Score", "ID", "Title", "Company", "Metro", "Mode", "Exp", "Family", "Signals"]
     table = Table(*columns, *(["Reasons"] if show_reasons else []), title=title)
     for r in rows:
         signals = []
@@ -209,6 +367,7 @@ def _jobs_table(rows: list, title: str, show_reasons: bool) -> Table:
         if r["clearance"]:
             signals.append(f"clr:{r['clearance']}")
         cells = [
+            "-" if r["score"] is None else str(r["score"]),
             str(r["id"]), escape(r["title"][:50]), escape((r["company"] or "")[:24]),
             r["metro"] or "-",
             r["work_mode"] or "?", r["experience"] or "?", r["role_family"] or "-",
@@ -234,6 +393,7 @@ def show(job_id: int) -> None:
         result = conn.execute(
             "SELECT * FROM filter_results WHERE job_id = ?", (job_id,)
         ).fetchone()
+        scored = db.job_score(conn, job_id)
     finally:
         conn.close()
 
@@ -253,9 +413,15 @@ def show(job_id: int) -> None:
         console.print(f"  reason  {item['code']}: {item['detail']}")
     for item in json.loads(result["notes_json"]):
         console.print(f"  note    {item['code']}: {item['detail']}")
+    if scored is not None:
+        parts = ", ".join(f"{k} {v:+d}" if k not in ("skills", "level") else f"{k} {v}"
+                          for k, v in json.loads(scored["components_json"]).items())
+        console.print(f"\n[bold]Score {scored['score']}[/bold] ({scored['scorer']}: {parts})")
+        for line in json.loads(scored["explanation_json"]):
+            console.print(f"  {escape(line)}")
     table = Table("Tag", "Value", "Evidence")
     for t in tags:
-        table.add_row(t["name"], t["value"], t["evidence"] or "")
+        table.add_row(t["name"], t["value"], escape(t["evidence"] or ""))
     console.print(table)
 
 

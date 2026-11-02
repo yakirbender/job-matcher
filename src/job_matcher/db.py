@@ -14,6 +14,7 @@ from job_matcher.models import Job, SearchSpec
 
 if TYPE_CHECKING:
     from job_matcher.filters import FilterResult
+    from job_matcher.scoring.base import ScoreResult
     from job_matcher.tagging import Tag
 
 # Each entry upgrades the schema by one version (tracked in PRAGMA user_version).
@@ -102,6 +103,25 @@ MIGRATIONS: list[str] = [
         content_hash TEXT NOT NULL,
         evaluated_at TEXT NOT NULL
     );
+    """,
+    """
+    -- CV match scores for jobs that passed the filters (milestone 3). One row per scorer,
+    -- rebuilt by every `jm score`.
+    CREATE TABLE scores (
+        job_id           INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        scorer           TEXT NOT NULL,
+        scorer_version   TEXT NOT NULL,
+        cv_hash          TEXT NOT NULL,
+        profile_hash     TEXT NOT NULL,
+        score            INTEGER NOT NULL,
+        components_json  TEXT NOT NULL,
+        explanation_json TEXT NOT NULL,
+        matched_json     TEXT NOT NULL,
+        missing_json     TEXT NOT NULL,
+        scored_at        TEXT NOT NULL,
+        PRIMARY KEY (job_id, scorer)
+    );
+    CREATE INDEX idx_scores_score ON scores(scorer, score);
     """,
 ]
 
@@ -354,6 +374,79 @@ def save_screening(
     )
 
 
+def replace_scores(
+    conn: sqlite3.Connection,
+    scorer: str,
+    scorer_version: str,
+    rows: Iterable[tuple[int, ScoreResult]],
+    *,
+    cv_hash: str,
+    profile_hash: str,
+    now: str | None = None,
+) -> None:
+    """Replace every stored score from this scorer. The caller commits."""
+    now = now or utcnow()
+    conn.execute("DELETE FROM scores WHERE scorer = ?", (scorer,))
+    conn.executemany(
+        """
+        INSERT INTO scores (job_id, scorer, scorer_version, cv_hash, profile_hash, score,
+            components_json, explanation_json, matched_json, missing_json, scored_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (job_id, scorer, scorer_version, cv_hash, profile_hash, r.score,
+             json.dumps(r.components), json.dumps(r.explanation, ensure_ascii=False),
+             json.dumps(r.matched), json.dumps(r.missing), now)
+            for job_id, r in rows
+        ],
+    )
+
+
+def scored_jobs(conn: sqlite3.Connection, scorer: str = "keyword") -> list[sqlite3.Row]:
+    """Jobs that pass the filters and have a score from this scorer, with what labeling
+    and evaluation need."""
+    return conn.execute(
+        """
+        SELECT j.id, j.title, j.company, j.location_display, j.work_mode, j.posted_at,
+               j.url, j.description, s.score, s.explanation_json,
+               COALESCE((SELECT value FROM tags t
+                         WHERE t.job_id = j.id AND t.name = 'employment'), 'unknown')
+                   AS employment
+        FROM jobs j
+        JOIN filter_results f ON f.job_id = j.id AND f.passed = 1
+        JOIN scores s ON s.job_id = j.id AND s.scorer = ?
+        ORDER BY j.id
+        """,
+        (scorer,),
+    ).fetchall()
+
+
+def drop_scores_for_rejected(conn: sqlite3.Connection) -> int:
+    """Remove scores of jobs that no longer pass the filters, so none shows a stale score."""
+    cur = conn.execute(
+        "DELETE FROM scores WHERE job_id IN (SELECT job_id FROM filter_results WHERE passed = 0)"
+    )
+    return cur.rowcount
+
+
+def job_score(conn: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM scores WHERE job_id = ? ORDER BY scored_at DESC LIMIT 1", (job_id,)
+    ).fetchone()
+
+
+def passed_jobs(conn: sqlite3.Connection) -> Iterator[tuple[int, Job, list[Tag]]]:
+    from job_matcher.tagging import Tag
+
+    rows = conn.execute(
+        """SELECT j.* FROM jobs j JOIN filter_results f ON f.job_id = j.id
+           WHERE f.passed = 1 ORDER BY j.id"""
+    ).fetchall()
+    for row in rows:
+        tags = [Tag(t["name"], t["value"], t["evidence"]) for t in job_tags(conn, row["id"])]
+        yield row["id"], row_to_job(row), tags
+
+
 def job_tags(conn: sqlite3.Connection, job_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT name, value, evidence FROM tags WHERE job_id = ? ORDER BY name", (job_id,)
@@ -386,7 +479,8 @@ def screened_jobs(
                 WHERE t.job_id = j.id AND t.name = 'suspicious') AS suspicious,
                COALESCE((SELECT value FROM tags t
                          WHERE t.job_id = j.id AND t.name = 'employment'), 'unknown')
-                   AS employment
+                   AS employment,
+               (SELECT MAX(score) FROM scores s WHERE s.job_id = j.id) AS score
         FROM jobs j JOIN filter_results f ON f.job_id = j.id
         WHERE f.passed = ?
     """
@@ -402,7 +496,7 @@ def screened_jobs(
     if metro:
         sql += " AND j.metro = ?"
         params.append(metro)
-    sql += " ORDER BY j.posted_at DESC LIMIT ?"
+    sql += " ORDER BY score DESC NULLS LAST, j.posted_at DESC LIMIT ?"
     params.append(limit)
     return conn.execute(sql, params).fetchall()
 

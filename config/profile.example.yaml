@@ -144,6 +144,14 @@ seniority:
     - finissant
     - finissante
     - premier emploi
+  # Titles that usually mean 1-3 years ("Software Engineer II"): kept, scored as a stretch.
+  stretch_title:
+    - ii
+    - engineer 2
+    - developer 2
+    - level 2
+    - intermediate
+    - intermédiaire
   # Reject when the snippet states more required experience than this. Postings that
   # don't say pass, flagged as unknown (the snippet is often cut before requirements).
   max_years_required: 2
@@ -186,3 +194,32 @@ suspicious:
   #  - scam_phrase: upfront/training fees, gift cards, interviews over WhatsApp/Telegram, …
   mode: tag
   min_template_titles: 5
+
+# How `jm score` adjusts the keyword score (0-100). Points are added to or taken from
+# the base score (skills match up to 60 + experience level up to 30). These are first
+# guesses: check them against a hand-scored sample and adjust.
+ranking:
+  # French-required roles get a boost.
+  french_required: 8
+  french_asset: 4
+  # Location preference. Unlisted metros and remote roles get 0.
+  metro:
+    orlando: 3
+    tampa: 3
+    miami: 3
+    montreal: 3
+  # "Ability to obtain" costs nothing. An already-active clearance
+  # is rare for new grads, so those roles rank lower but stay visible.
+  clearance:
+    obtainable: 0
+    required: -5      # clearance mentioned, unclear whether it must be active
+    active: -15
+    polygraph: -5     # on top of the above
+  # Mass-templated postings are marked; this keeps them from crowding the top.
+  suspicious: -15
+  # CV phrases that show related experience for a role family. Shown in the explanation
+  # only; role families aren't boosted.
+  relevant_experience:
+    training: [tutor, tutoring, teaching assistant, tuteur, tutrice]
+    support: [help desk, customer service, service à la clientèle]
+    qa: [junit, cucumber, gherkin, mockito, postman, testing]

@@ -1,0 +1,112 @@
+# Skills the keyword scorer recognizes in both your CV and job postings.
+#
+# Each entry is a canonical name and its other spellings (English and French). Matching
+# ignores case and accents and works on whole words, so "c#" won't match "c" and "java"
+# won't match "javascript". Add anything your CV or target jobs use.
+
+# Names that are too ambiguous to match bare in job text ("C-level", "R&D", "go to
+# market"). Bare, they only count in your CV, where they appear in a skills list;
+# in postings they need one of their longer spellings ("C/C++", "golang").
+cv_only_bare_names: [c, r, go]
+
+# Half credit: a job skill you don't have, but a close relative you do. "angular:
+# [react, vue]" means knowing React or Vue counts half toward an Angular requirement.
+related_skills:
+  angular: [react, vue]
+  react: [vue, angular]
+  vue: [react, angular]
+  typescript: [javascript]
+  javascript: [typescript]
+  node.js: [javascript]
+  express: [node.js]
+  kotlin: [java]
+  c#: [java, c++]
+  .net: [c#]
+  c++: [c]
+  c: [c++]
+  django: [python]
+  flask: [python, django]
+  fastapi: [python, flask]
+  mysql: [postgresql, sqlite, sql]
+  postgresql: [mysql, sqlite, sql]
+  sqlite: [postgresql, mysql, sql]
+  oracle: [sql]
+  aws: [azure, gcp]
+  azure: [aws, gcp]
+  gcp: [azure, aws]
+  kubernetes: [docker]
+  test automation: [unit testing, bdd]
+
+# Programming languages
+python: [python3]
+java: [java se, java ee, jdk]
+javascript: [js, ecmascript, es6]
+typescript: [ts]
+c: [c programming, c language, langage c, c/c++, embedded c, ansi c]
+c++: [cpp, c/c++]
+c#: [csharp, c sharp]
+go: [golang, go language]
+rust: []
+kotlin: []
+swift: []
+php: []
+ruby: []
+sql: [t-sql, pl/sql, tsql, plsql]
+r: [r programming, langage r, rstudio]
+matlab: []
+bash: [shell scripting, shell script, powershell]
+vba: [excel macros, macros excel]
+assembly: [assembler, assembleur]
+
+# Web and frameworks
+html: [html5]
+css: [css3, sass, scss, tailwind]
+react: [react.js, reactjs, react native]
+angular: [angularjs]
+vue: [vue.js, vuejs]
+node.js: [node, nodejs]
+express: [express.js]
+django: []
+flask: []
+fastapi: []
+spring: [spring boot, springboot]
+.net: [dotnet, asp.net, .net core]
+rest: [rest api, rest apis, restful, api rest]
+graphql: []
+
+# Data
+postgresql: [postgres]
+mysql: []
+sqlite: []
+mongodb: [mongo]
+oracle: [oracle database]
+pandas: []
+numpy: []
+spark: [apache spark, pyspark]
+etl: []
+power bi: [powerbi]
+excel: [microsoft excel]
+machine learning: [ml, apprentissage automatique]
+data structures: [structures de données]
+algorithms: [algorithmes, algorithmique]
+
+# Cloud, DevOps, tools
+aws: [amazon web services]
+azure: [microsoft azure]
+gcp: [google cloud, google cloud platform]
+docker: [containers, conteneurs]
+kubernetes: [k8s]
+linux: [unix, ubuntu]
+git: [github, gitlab, version control, contrôle de version]
+ci/cd: [cicd, continuous integration, intégration continue, jenkins, github actions, azure devops]
+terraform: []
+jira: []
+
+# Practices and testing
+oop: [object-oriented, object oriented, object-oriented programming, programmation orientée objet, orienté objet]
+agile: [scrum, kanban]
+unit testing: [unit tests, tests unitaires, pytest, junit, jest, mockito]
+test automation: [automated testing, selenium, cypress, playwright, automatisation des tests]
+bdd: [behavior-driven, behaviour-driven, cucumber, gherkin]
+api testing: [postman, insomnia]
+debugging: [débogage]
