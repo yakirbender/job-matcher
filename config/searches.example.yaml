@@ -8,6 +8,10 @@ defaults:
   max_days_old: 14        # only postings from the last N days
   max_pages: 1            # 50 results per page; raise for a first backfill
   results_per_page: 50    # Adzuna maximum
+  # Match terms against job titles only. Full-text matching hits words anywhere in the
+  # posting (which we can't see): "junior developer" in Orlando returned 28 jobs, 1 junior.
+  # Title-only returned just that one. Override per region, or with --full-text.
+  title_only: true
 
 # Adzuna's limits depend on your plan (shown in your developer account).
 # Budgets are rolling windows counted from the database, with some headroom left.

@@ -22,6 +22,7 @@ class SearchSpec:
     distance_km: int | None = None
     remote: bool = False
     remote_keywords: tuple[str, ...] = ()
+    title_only: bool = False  # match the term against titles instead of the full posting
     max_days_old: int | None = None
     max_pages: int = 1
     results_per_page: int = 50

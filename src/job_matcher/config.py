@@ -21,6 +21,7 @@ class Defaults(BaseModel):
     max_days_old: int | None = Field(14, ge=1)
     max_pages: int = Field(1, ge=1)
     results_per_page: int = Field(50, ge=1, le=50)
+    title_only: bool = False
 
 
 class Limits(BaseModel):
@@ -37,6 +38,7 @@ class RegionConfig(BaseModel):
     remote: bool = False
     max_pages: int | None = Field(None, ge=1)
     max_days_old: int | None = Field(None, ge=1)
+    title_only: bool | None = None  # None = use defaults.title_only
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -69,11 +71,13 @@ class SearchConfig(BaseModel):
         regions: list[str] | None = None,
         max_pages: int | None = None,
         terms: list[str] | None = None,
+        title_only: bool | None = None,
     ) -> list[SearchSpec]:
         """Expand regions x term groups into individual searches.
 
         With `regions` given, those regions run even if disabled in the file.
         With `terms` given, only searches for those exact terms are kept.
+        `title_only` overrides the file's setting for every search.
         """
         if regions:
             unknown = sorted(set(regions) - set(self.regions))
@@ -97,6 +101,9 @@ class SearchConfig(BaseModel):
                             distance_km=region.distance_km,
                             remote=region.remote,
                             remote_keywords=tuple(self.remote_keywords) if region.remote else (),
+                            title_only=_first_set(
+                                title_only, region.title_only, self.defaults.title_only
+                            ),
                             max_days_old=region.max_days_old or self.defaults.max_days_old,
                             max_pages=max_pages or region.max_pages or self.defaults.max_pages,
                             results_per_page=self.defaults.results_per_page,
@@ -107,6 +114,10 @@ class SearchConfig(BaseModel):
             if not specs:
                 raise ValueError(f"no selected region searches for any of {terms}")
         return specs
+
+
+def _first_set(*values: bool | None) -> bool:
+    return next((v for v in values if v is not None), False)
 
 
 def load_search_config(path: Path = DEFAULT_CONFIG_PATH) -> SearchConfig:

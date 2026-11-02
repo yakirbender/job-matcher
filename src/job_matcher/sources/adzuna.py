@@ -107,7 +107,7 @@ class AdzunaSource:
     def build_params(spec: SearchSpec) -> dict[str, Any]:
         """Query parameters for a search, excluding credentials."""
         params: dict[str, Any] = {
-            "what": spec.term,
+            "title_only" if spec.title_only else "what": spec.term,
             "results_per_page": spec.results_per_page,
             "sort_by": "date",
             "content-type": "application/json",

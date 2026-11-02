@@ -30,6 +30,7 @@ uv run jm stats                                 # what's in the database
 | `-r, --region` | Only these regions (repeatable). |
 | `-t, --term` | Only these exact terms from `searches.example.yaml` (repeatable). |
 | `--limit N` | Stop after N API calls in this run. |
+| `--title-only / --full-text` | Match terms in job titles (config default) or anywhere in the posting. |
 | `--max-pages N` | Pages per search (50 results each). |
 | `--all-pages` | Don't stop a search at the first page with nothing new. |
 | `--plan` | Show what would run, without calling the API. |
@@ -65,10 +66,13 @@ with nothing new.
 
 - Adzuna returns only a ~500-character description snippet ending in "…". Requirements
   and work mode stated later in a posting are invisible here.
-- Adzuna matches search words against the full posting, which we can't see. A search for
-  "développeur junior" can return senior roles that mention juniors somewhere, and remote
-  searches return jobs whose snippet never says "remote". Treat search terms as a wide net;
-  filtering happens locally (milestone 2).
+- Search terms match job titles by default (`title_only: true`). With `--full-text`,
+  Adzuna matches words anywhere in the full posting, which we can't see: "junior developer"
+  in Orlando returned 28 jobs, only 1 of them junior. Title-only returned just that one.
+  Broad terms like "software engineer" still return every seniority level ("Senior",
+  "Software Engineer I"); seniority filtering happens locally (milestone 2).
+- The remote keywords ("remote", "télétravail") are always matched against the full
+  posting, so remote searches can return jobs whose snippet never mentions remote work.
 - Adzuna has no remote filter. Remote searches add "remote"/"télétravail" as keywords.
 - Some regions are high-volume: one page of remote US results covers well under an hour
   of new postings.

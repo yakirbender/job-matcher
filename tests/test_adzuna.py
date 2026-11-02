@@ -43,6 +43,13 @@ def test_build_params_for_city_and_remote_searches():
     assert "where" not in remote
 
 
+def test_title_only_replaces_full_text_matching():
+    params = AdzunaSource.build_params(make_spec(term="junior developer", title_only=True))
+    assert params["title_only"] == "junior developer"
+    assert "what" not in params
+    assert AdzunaSource.build_params(make_spec())["what"] == "software developer"
+
+
 def test_search_normalizes_results(adzuna_page):
     requests: list[httpx.Request] = []
 

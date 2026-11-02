@@ -40,6 +40,14 @@ def fetch(
     limit: Annotated[
         int | None, typer.Option(min=1, help="Stop after this many API requests in this run.")
     ] = None,
+    title_only: Annotated[
+        bool | None,
+        typer.Option(
+            "--title-only/--full-text",
+            help="Match terms in titles only, or anywhere in the posting. Default: config.",
+            show_default=False,
+        ),
+    ] = None,
     all_pages: Annotated[
         bool, typer.Option("--all-pages", help="Don't stop a search when a page has nothing new.")
     ] = False,
@@ -50,16 +58,17 @@ def fetch(
     """Pull new postings from the configured source into the database."""
     try:
         cfg = load_search_config(config)
-        specs = cfg.specs(regions=region, max_pages=max_pages, terms=term)
+        specs = cfg.specs(regions=region, max_pages=max_pages, terms=term, title_only=title_only)
     except (ValidationError, ValueError) as exc:
         console.print(f"[red]Config error:[/red] {exc}")
         raise typer.Exit(2) from None
 
     if plan:
-        table = Table("Region", "Country", "Where", "Term", "Pages")
+        table = Table("Region", "Country", "Where", "Term", "Match", "Pages")
         for s in specs:
             where = "(remote)" if s.remote else f"{s.where} ({s.distance_km or '-'} km)"
-            table.add_row(s.region, s.country, where, s.term, str(s.max_pages))
+            match = "title" if s.title_only else "full text"
+            table.add_row(s.region, s.country, where, s.term, match, str(s.max_pages))
         console.print(table)
         most = sum(s.max_pages for s in specs)
         if limit is not None:

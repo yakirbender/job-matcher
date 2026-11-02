@@ -15,6 +15,7 @@ def test_repo_config_loads_and_expands():
     assert any(s.term == "développeur junior" and s.region == "montreal" for s in specs)
     remote = [s for s in specs if s.region == "remote_ca"]
     assert all(s.remote and s.where is None and s.remote_keywords for s in remote)
+    assert all(s.title_only for s in specs)
     # Keep a default run comfortably inside the daily budget.
     assert sum(s.max_pages for s in specs) <= cfg.limits.per_day
 
@@ -34,6 +35,20 @@ def test_term_selection():
     assert [(s.region, s.term) for s in specs] == [("remote_ca", "développeur junior")]
     with pytest.raises(ValueError, match="no selected region searches"):
         cfg.specs(regions=["florida"], terms=["développeur junior"])
+
+
+def test_title_only_precedence():
+    cfg = SearchConfig.model_validate({
+        "defaults": {"title_only": True},
+        "terms": {"core": ["dev"]},
+        "regions": {
+            "a": {"country": "us", "where": "X", "term_groups": ["core"]},
+            "b": {"country": "us", "where": "Y", "term_groups": ["core"], "title_only": False},
+        },
+    })
+    assert {s.region: s.title_only for s in cfg.specs()} == {"a": True, "b": False}
+    assert all(s.title_only is False for s in cfg.specs(title_only=False))
+    assert all(s.title_only is True for s in cfg.specs(title_only=True))
 
 
 def _config(**region):
