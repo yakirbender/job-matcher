@@ -1,0 +1,76 @@
+# Example searches. Copy to private/searches.yaml to customize them. Each region runs every term in its term groups.
+# Requests per run = sum over regions of (terms x max_pages), minus early stops.
+# Check the plan with:  uv run jm fetch --plan
+
+source: adzuna
+
+defaults:
+  max_days_old: 14        # only postings from the last N days
+  max_pages: 1            # 50 results per page; raise for a first backfill
+  results_per_page: 50    # Adzuna maximum
+
+# Adzuna's limits depend on your plan (shown in your developer account).
+# Budgets are rolling windows counted from the database, with some headroom left.
+#   Trial ("Pending Activation"): 25 test calls in total.  -> per_month: 20
+#   API Access (paid): 500/day, 5,000/month.               -> per_day: 450, per_month: 4500
+limits:
+  per_minute: 20
+  per_day: 200
+  per_month: 20           # trial; raise after upgrading
+
+terms:
+  core_en:
+    - software developer
+    - software engineer
+    - junior developer
+    - junior software engineer
+    - entry level software engineer
+    - new grad software engineer
+    - backend developer
+    - full stack developer
+  core_fr:
+    - développeur logiciel
+    - développeur junior
+    - programmeur
+    - programmeur-analyste
+    - ingénieur logiciel
+    - développeur back-end
+    - développeur full stack
+  adjacent_en:
+    - technical support engineer
+    - implementation specialist
+    - QA analyst
+    - test automation
+  adjacent_fr:
+    - analyste support technique
+    - testeur logiciel
+    - spécialiste en implantation
+
+# Added as "any of these words" to remote searches. Adzuna has no remote flag,
+# so the real work mode is inferred later from the posting text.
+remote_keywords: [remote, télétravail, teletravail]
+
+regions:
+  montreal:
+    country: ca
+    where: Montreal
+    distance_km: 50
+    term_groups: [core_en, core_fr, adjacent_en, adjacent_fr]
+  florida:
+    country: us
+    where: Florida
+    term_groups: [core_en, adjacent_en]
+  orlando:
+    # Statewide results are capped per page, so a city query adds coverage.
+    country: us
+    where: Orlando
+    distance_km: 40
+    term_groups: [core_en, adjacent_en]
+  remote_ca:
+    country: ca
+    remote: true
+    term_groups: [core_en, core_fr, adjacent_en, adjacent_fr]
+  remote_us:
+    country: us
+    remote: true
+    term_groups: [core_en, adjacent_en]

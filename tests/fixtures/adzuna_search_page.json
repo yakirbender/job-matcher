@@ -1,0 +1,225 @@
+{
+  "__CLASS__": "Adzuna::API::Response::JobSearchResults",
+  "count": 7,
+  "mean": 0,
+  "results": [
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example Staffing"
+      },
+      "contract_time": "full_time",
+      "created": "2026-11-01T00:16:32Z",
+      "description": "SAP Backend Developer – Remote Example Staffing is hiring a backend developer to build integrations for enterprise clients. Location: 100% Remote (United States) Position Type: Full-time Salary Range: $100,000–$150,000 Annually Experience: 6 years Sp…",
+      "id": "900001",
+      "latitude": 28.537635,
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "US",
+          "Florida",
+          "Orange County",
+          "Alafaya"
+        ],
+        "display_name": "Alafaya, Orange County"
+      },
+      "longitude": -81.173441,
+      "redirect_url": "https://www.adzuna.com/land/ad/900001",
+      "salary_is_predicted": "0",
+      "salary_max": 150000,
+      "salary_min": 100000,
+      "title": "SAP Backend Developer"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example Defense"
+      },
+      "created": "2026-11-02T14:20:04Z",
+      "description": "Example Defense builds training simulators for public-sector customers. The software engineer will design, test and maintain simulation components as part of a small team, working closely with systems engineers on…",
+      "id": "900002",
+      "latitude": 28.376765,
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "US",
+          "Florida",
+          "Orange County",
+          "Meadow Woods"
+        ],
+        "display_name": "Meadow Woods, Orange County"
+      },
+      "longitude": -81.362631,
+      "redirect_url": "https://www.adzuna.com/land/ad/900002",
+      "salary_is_predicted": "1",
+      "salary_max": 101217.05,
+      "salary_min": 101217.05,
+      "title": "Software Engineer II with Security Clearance"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example Co 3"
+      },
+      "created": "2026-10-31T21:31:46Z",
+      "description": "Senior UI Software Engineer – Angular/AWS Title: Senior UI Software Engineer Location: Kissimmee, FL (Hybrid: 1–2 days onsite per week) Contract: 22 month contract Overview We are seeking an engineer to improve web commerce pages for a consumer…",
+      "id": "900003",
+      "latitude": 28.31171,
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "US",
+          "Florida",
+          "Osceola County",
+          "Celebration"
+        ],
+        "display_name": "Celebration, Osceola County"
+      },
+      "longitude": -81.572719,
+      "redirect_url": "https://www.adzuna.com/land/ad/900003",
+      "salary_is_predicted": "1",
+      "salary_max": 113402.27,
+      "salary_min": 113402.27,
+      "title": "Senior Full Stack UI Engineer"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example ERP"
+      },
+      "contract_time": "full_time",
+      "created": "2026-10-24T04:57:30Z",
+      "description": "Développeur Angular Équipe développement (100% télétravail au Québec) Le candidat doit être domicilié au Québec. Example ERP cherche un développeur Angular pour son équipe de produit. Vous aurez l’occasion de développer et migrer des…",
+      "id": "900004",
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "Canada"
+        ],
+        "display_name": "Canada"
+      },
+      "redirect_url": "https://www.adzuna.com/land/ad/900004",
+      "salary_is_predicted": "0",
+      "title": "Développeur Angular Équipe développement (100% télétravail au Québec)"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example AI"
+      },
+      "created": "2026-11-01T12:05:36Z",
+      "description": "À propos d'Exemple IA Exemple IA est un institut de recherche en intelligence artificielle. Notre équipe conçoit des applications pour les chercheurs et les partenaires du milieu, avec un accent sur…",
+      "id": "900005",
+      "latitude": 45.544959,
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "Canada",
+          "Québec",
+          "Montréal"
+        ],
+        "display_name": "Montréal, Québec"
+      },
+      "longitude": -73.588138,
+      "redirect_url": "https://www.adzuna.com/land/ad/900005",
+      "salary_is_predicted": "0",
+      "title": "Développeur.euse principal.e, Développement d’applications IA"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "Engineering Jobs",
+        "tag": "engineering-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example Co 6"
+      },
+      "created": "2026-11-02T00:24:39Z",
+      "description": "Overview: Example Co is a nonprofit research company. We are looking for a systems test engineer to plan and run integration tests for guidance hardware with a small team of engineers and…",
+      "id": "900006",
+      "latitude": 28.572257,
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "US",
+          "Florida",
+          "Brevard County",
+          "Titusville"
+        ],
+        "display_name": "Titusville, Brevard County"
+      },
+      "longitude": -80.821992,
+      "redirect_url": "https://www.adzuna.com/land/ad/900006",
+      "salary_is_predicted": "1",
+      "salary_max": 110784.39,
+      "salary_min": 110784.39,
+      "title": "Systems Test Engineer with Security Clearance"
+    },
+    {
+      "__CLASS__": "Adzuna::API::Response::Job",
+      "adref": "REDACTED",
+      "category": {
+        "__CLASS__": "Adzuna::API::Response::Category",
+        "label": "IT Jobs",
+        "tag": "it-jobs"
+      },
+      "company": {
+        "__CLASS__": "Adzuna::API::Response::Company",
+        "display_name": "Example Co 7"
+      },
+      "created": "2026-11-02T14:25:52Z",
+      "description": "Skills: Knowledge of software development and languages such as Python, Java and Go. Proficiency in configuration management and monitoring. 3-5 years of experience What would…",
+      "id": "900007",
+      "location": {
+        "__CLASS__": "Adzuna::API::Response::Location",
+        "area": [
+          "US"
+        ],
+        "display_name": "US"
+      },
+      "redirect_url": "https://www.adzuna.com/land/ad/900007",
+      "salary_is_predicted": "1",
+      "salary_max": 96408.98,
+      "salary_min": 96408.98,
+      "title": "Site Reliability Engineer || Remote (Must be from CST)"
+    }
+  ]
+}
