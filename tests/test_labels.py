@@ -96,12 +96,40 @@ def test_evaluate_reports_agreement_and_biggest_disagreements_first():
         labels.Label(3, 0, "spam", False),      # weak, skip: agree
         labels.Label(4, 0, "defense", False),   # strong, but you'd skip: gap 2
         labels.Label(5, 1, "", False),          # weak, maybe: gap 1
-        labels.Label(99, 2, "", False),         # no longer scored
+        labels.Label(99, 2, "", False),         # neither scored nor screened
     ], scored)
     assert report.compared == 5
-    assert report.missing_scores == [99]
+    assert report.missing == [99]
     assert report.band_agreement == pytest.approx(0.6)
     assert [d.job_id for d in report.disagreements] == [4, 5]
     assert report.disagreements[0].reason == "defense"
     assert report.confusion[(0, 2)] == 1
     assert report.mean_score_by_label == {0: 50.0, 1: 50.0, 2: 75.0}
+
+
+def test_filter_rejections_count_as_skip():
+    # The real case: after the experience fix, two jobs you labeled skip were rejected by the
+    # filters. They should count as agreements, not drop out of the comparison.
+    scored = {r["id"]: r for r in rows([(1, "A", 66), (2, "B", 30)])}
+    rejected = {159: ("React Developer", "experience"), 158: ("Rust Developer", "seniority"),
+                7: ("Test Engineer", "location")}
+    report = labels.evaluate([
+        labels.Label(1, 1, "", False),       # possible, maybe: agree
+        labels.Label(2, 0, "", False),       # weak, skip: agree
+        labels.Label(159, 0, "5+ years", False),
+        labels.Label(158, 0, "too senior", False),
+        labels.Label(7, 2, "great", False),  # filtered out, but you'd apply: a filter mistake
+    ], scored, rejected)
+    assert report.compared == 5
+    assert report.filtered_out == 3
+    assert report.missing == []
+    assert report.band_agreement == pytest.approx(0.8)
+    assert report.confusion[(0, labels.FILTERED)] == 2
+    assert report.confusion[(2, labels.FILTERED)] == 1
+    assert report.mean_score_by_label == {0: 30.0, 1: 66.0}  # scored jobs only
+
+    [miss] = report.disagreements
+    assert (miss.job_id, miss.title, miss.score, miss.gap) == (7, "Test Engineer", None, 2)
+    assert miss.explanation == ["Rejected by filters: location"]
+    # Rejected jobs rank below every scored one: skip(-1), skip(-1), skip(30), maybe(66), apply(-1)
+    assert report.spearman is not None and report.spearman < 0.5

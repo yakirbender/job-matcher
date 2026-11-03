@@ -44,9 +44,12 @@ _EXPERIENCE_PATTERNS = [
         rf"(?<!\w){_RANGE}\s*{_UNIT}\s+(?:of\s+)?"
         r"(?:professional|relevant|related|industry|work|hands-on|progressive)(?!\w)"
     ),
-    # "Experience: 6 years", "experience of 3+ years", "experience minimale de 2 ans"
+    # "Experience: 6 years", "Experience Required: 5 years", "experience of 3+ years",
+    # "Minimum experience: 4 years", "expérience requise : 3 ans"
     re.compile(
-        rf"(?<!\w)experiences?\s*(?::|-|of|de|minimale de|minimum de|minimum of|of at least)?"
+        r"(?<!\w)(?:minimum\s+)?experiences?\s*"
+        r"(?:required|requirements?|needed|requise|exigee|minimale|minimum)?\s*"
+        r"(?::|-|of|de|minimum de|minimum of|of at least)?"
         rf"\s*(?:at least\s*|minimum\s*)?{_RANGE}\s*{_UNIT}(?!\w)"
     ),
 ]
@@ -70,6 +73,35 @@ def experience_years(text: str) -> tuple[int, str] | None:
             if best is None or years > best[0]:
                 best = (years, _evidence(folded, m, pad=20))
     return best
+
+
+# --- stated level -------------------------------------------------------------
+
+# "Experience Level: Middle / Senior", "Career Level Mid Level", "Seniority level: Entry",
+# "Niveau d'expérience : Junior". Captures what follows, up to punctuation or 4 words.
+# Bare "niveau" needs a colon: "anglais niveau avancé" is a language requirement.
+_STATED_LEVEL = re.compile(
+    r"(?<!\w)(?:(?:(?:experience|career|seniority|job|position)\s+level"
+    r"|niveau\s+(?:d'experience|de carriere|hierarchique))\s*:?"
+    r"|niveau\s*:)"
+    r"\s*((?:[a-z-]+(?:\s*/\s*|\s+)?){1,4})"
+)
+_LEVEL_WORDS = [  # checked lowest first: "Middle / Senior" accepts mid-level people
+    ("entry", ("entry", "junior", "jr", "associate", "graduate", "debutant", "debutante")),
+    ("mid", ("mid", "middle", "intermediate", "intermediaire")),
+    ("senior", ("senior", "expert", "lead", "principal", "advanced", "avance", "experimente")),
+]
+
+
+def stated_level(text: str) -> Tag | None:
+    """The level a posting states outright ("Experience Level: Senior"), or None."""
+    folded = fold(text)
+    for m in _STATED_LEVEL.finditer(folded):
+        words = set(re.findall(r"[a-z]+", m.group(1)))
+        for level, vocab in _LEVEL_WORDS:
+            if words & set(vocab):
+                return Tag("stated_level", level, m.group(0).strip())
+    return None
 
 
 # --- clearance and citizenship ------------------------------------------------
@@ -257,13 +289,22 @@ def tag_job(job: Job, profile: Profile) -> list[Tag]:
     if family := role_family(job.title, profile.role_families):
         tags.append(family)
 
+    level = stated_level(job.description)
+    if level:
+        tags.append(level)
+
     entry = find_any(title, seniority.entry_level_title)
     if entry:
         tags.append(Tag("entry_level", "title", entry))
     elif desc_entry := find_any(job.description, seniority.entry_level_description):
         tags.append(Tag("entry_level", "description", desc_entry))
-    if not entry and (senior := find_any(title, seniority.exclude_title)):
-        tags.append(Tag("seniority", "senior", senior))
+    elif level and level.value == "entry":
+        tags.append(Tag("entry_level", "description", level.evidence))
+    if not entry:
+        if senior := find_any(title, seniority.exclude_title):
+            tags.append(Tag("seniority", "senior", senior))
+        elif level and level.value == "senior":
+            tags.append(Tag("seniority", "senior", level.evidence))
 
     if found := experience_years(text):
         tags.append(Tag("experience_years", str(found[0]), found[1]))

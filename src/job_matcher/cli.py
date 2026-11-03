@@ -254,7 +254,9 @@ def label_export(
 
 @app.command("eval")
 def label_eval(path: LabelsOption = labels.DEFAULT_LABELS_PATH) -> None:
-    """Compare your labels with the scorer: agreement, rank correlation, disagreements."""
+    """Compare your labels with the pipeline: agreement, rank correlation, disagreements.
+
+    Jobs the filters rejected count as the pipeline saying "skip"."""
     if not path.exists():
         console.print(f"No labels file at {path}; run `jm label` first.")
         raise typer.Exit(1)
@@ -269,15 +271,18 @@ def label_eval(path: LabelsOption = labels.DEFAULT_LABELS_PATH) -> None:
     conn = db.connect(settings.db_path)
     try:
         scored = {r["id"]: r for r in db.scored_jobs(conn)}
+        rejected = db.rejected_jobs(conn)
     finally:
         conn.close()
-    report = labels.evaluate(parsed.labels, scored)
+    report = labels.evaluate(parsed.labels, scored, rejected)
 
     console.print(
         f"Compared {report.compared} labeled jobs"
+        + (f", {report.filtered_out} of them rejected by the filters (counted as skip)"
+           if report.filtered_out else "")
         + (f" ({parsed.unlabeled} still blank)" if parsed.unlabeled else "")
-        + (f"; {len(report.missing_scores)} no longer scored: {report.missing_scores}"
-           if report.missing_scores else "") + "."
+        + (f"; {len(report.missing)} not found: {report.missing}" if report.missing else "")
+        + "."
     )
     if not report.compared:
         return
@@ -288,24 +293,26 @@ def label_eval(path: LabelsOption = labels.DEFAULT_LABELS_PATH) -> None:
     )
     means = ", ".join(f"{labels.LABEL_NAMES[k]} {v:.0f}"
                       for k, v in sorted(report.mean_score_by_label.items(), reverse=True))
-    console.print(f"Mean score by your label: {means}  (should fall from apply to skip)")
+    console.print(f"Mean score by your label (scored jobs): {means}  (should fall apply -> skip)")
 
+    columns = (2, 1, 0, labels.FILTERED)
     grid = Table("Your label", "Scorer: strong 70+", "possible 50-69", "weak <50",
-                 title="Your label vs scorer band")
+                 "filtered out", title="Your label vs the pipeline's verdict")
     for lab in (2, 1, 0):
         grid.add_row(labels.LABEL_NAMES[lab],
-                     *(str(report.confusion.get((lab, band), 0)) for band in (2, 1, 0)))
+                     *(str(report.confusion.get((lab, col), 0)) for col in columns))
     console.print(grid)
 
     if report.disagreements:
-        table = Table("ID", "Title", "You", "Score", "Your reason", "Scorer's first lines",
+        table = Table("ID", "Title", "You", "Score", "Your reason", "Pipeline's first lines",
                       title="Disagreements, biggest first")
         for d in report.disagreements:
             explanation = escape(" | ".join(d.explanation[:2]))
             table.add_row(str(d.job_id), escape(d.title[:40]), labels.LABEL_NAMES[d.label],
-                          str(d.score), escape(d.reason[:40]), explanation)
+                          "filtered" if d.score is None else str(d.score),
+                          escape(d.reason[:40]), explanation)
         console.print(table)
-    if max(r["score"] for r in scored.values()) < 70:
+    if scored and max(r["score"] for r in scored.values()) < 70:
         console.print(
             "[yellow]Note:[/yellow] no scored job reaches 70, so every 'apply' counts as a band "
             "disagreement. Until the thresholds or weights change, the rank correlation and "

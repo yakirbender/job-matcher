@@ -48,7 +48,9 @@ def evaluate(
         reject(Reason("not_software", "title matches no role family"))
 
     if senior := _tag(tags, "seniority"):
-        reject(Reason("seniority", f"title has '{senior.evidence}'"))
+        stated = _tag(tags, "stated_level")
+        source = "posting says" if stated and stated.evidence == senior.evidence else "title has"
+        reject(Reason("seniority", f"{source} '{senior.evidence}'"))
 
     if word := find_any(title, profile.exclude.title):
         reject(Reason("internship", f"title has '{word}'"))

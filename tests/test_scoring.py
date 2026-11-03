@@ -145,6 +145,13 @@ def test_pipeline_scores_passed_jobs_and_orders_the_list(conn):
     assert conn.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == 0
 
 
+def test_stated_mid_level_scores_as_a_stretch():
+    result = score(make_job(title="Software Engineer", metro=None,
+                            description="Experience Level: Middle / Senior"))
+    assert result.components["level"] == 10
+    assert "posting says mid level" in result.explanation[1]
+
+
 def test_level_wording_for_stated_years():
     result = score(make_job(title="Software Developer", metro=None,
                             description="0-2 years of experience."))

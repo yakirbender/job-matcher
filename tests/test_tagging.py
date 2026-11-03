@@ -10,6 +10,7 @@ from job_matcher.tagging import (
     french_tags,
     posting_language,
     role_family,
+    stated_level,
     tag_job,
 )
 from job_matcher.text import fold_title
@@ -80,6 +81,11 @@ def test_role_family(title, family):
         ("Au moins 5 ans d’expérience pertinente", 5),
         ("Expérience minimale de 2 ans", 2),
         ("3-5 years of experience What would…", 3),
+        # Real snippet (job #159) that the first version missed.
+        ("Salary Range: $120,000–$180,000 Annually Experience Required: 5 years Sponsorship", 5),
+        ("Experience needed: 3+ years", 3),
+        ("Minimum experience: 4 years", 4),
+        ("Expérience requise : 3 ans", 3),
         # No requirement stated.
         ("22 month contract, 1–2 days onsite per week, 401(k) match", None),
         ("Founded 25 years ago, we build simulation software.", None),
@@ -170,6 +176,40 @@ def test_posting_written_in_french_counts_as_french_required():
 )
 def test_employment(overrides, value):
     assert employment_tag(make_job(**overrides)).value == value
+
+
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        # Real snippet (job #73): mid and senior both allowed, so the lower one counts.
+        ("Employment Type: Full-time Experience Level: Middle / Senior About the role", "mid"),
+        ("Job Type Full-Time Career Level Mid Level Education", "mid"),  # real, job #86
+        ("Experience level: Senior", "senior"),
+        ("Seniority level: Entry level", "entry"),
+        ("Niveau d'expérience : Junior", "entry"),
+        ("Niveau : Intermédiaire", "mid"),
+        ("Level of effort varies by project", None),
+        # Language requirements, not job levels (found in diff review).
+        ("Anglais niveau avancé requis", None),
+        ("Français niveau intermédiaire, un atout", None),
+    ],
+)
+def test_stated_level(text, value):
+    tag = stated_level(text)
+    assert (tag.value if tag else None) == value
+
+
+def test_stated_senior_level_becomes_a_seniority_tag():
+    job = make_job(title="Software Developer", description="Experience Level: Senior. Java.")
+    tags = {t.name: (t.value, t.evidence) for t in tag_job(job, PROFILE)}
+    assert tags["stated_level"][0] == "senior"
+    assert tags["seniority"] == ("senior", "experience level: senior")
+
+
+def test_stated_entry_level_counts_as_entry_wording():
+    job = make_job(title="Software Developer", description="Seniority level: Entry level.")
+    tags = {t.name: t.value for t in tag_job(job, PROFILE)}
+    assert tags["entry_level"] == "description"
 
 
 def test_tag_job_entry_level_beats_seniority_words():

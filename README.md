@@ -167,10 +167,13 @@ Fill in, judging from the same title and snippet the scorer sees:
 - `reason`: a few words ("too senior", "no Java", "not Orlando", "looks templated")
 - `opened_full_posting`: `yes` if you clicked through to the full posting
 
-`jm eval` then reports band agreement, Spearman rank correlation (1 = same order as yours,
-0 = unrelated), the mean score for each of your labels (it should fall from apply to skip),
-a label-vs-band grid, and every disagreement with your reason next to the scorer's
-explanation. Each disagreement is either a scorer mistake (fix a rule or weight) or a
+`jm eval` compares your labels with the whole pipeline: a job the filters rejected counts as
+the pipeline saying "skip" (its own "filtered out" column), so correct rejections stay in the
+comparison and a wrongly rejected job you'd apply to shows up as a disagreement. It reports
+band agreement, Spearman rank correlation (1 = same order as yours, 0 = unrelated; rejected
+jobs rank below every scored one), the mean score for each of your labels (scored jobs only;
+it should fall from apply to skip), a label-vs-verdict grid, and every disagreement with your
+reason next to the pipeline's explanation. Each disagreement is either a scorer mistake (fix a rule or weight) or a
 personal preference the profile doesn't capture yet. The `Scorer` interface (`scoring/base.py`) lets a local
 LLM or API scorer replace the keyword scorer later.
 

@@ -157,58 +157,83 @@ def spearman(xs: list[float], ys: list[float]) -> float | None:
 
 
 @dataclass
-class Disagreement:
+class Verdict:
     job_id: int
     title: str
     label: int
     reason: str
-    score: int
+    score: int | None  # None: rejected by the filters
     explanation: list[str]
 
     @property
+    def band(self) -> int:
+        return 0 if self.score is None else score_band(self.score)
+
+    @property
     def gap(self) -> int:
-        return abs(score_band(self.score) - self.label)
+        return abs(self.band - self.label)
+
+
+FILTERED = "filtered"  # confusion-grid column for jobs the filters rejected
 
 
 @dataclass
 class EvalReport:
     compared: int = 0
-    missing_scores: list[int] = field(default_factory=list)  # labeled, but no current score
-    band_agreement: float | None = None  # share where the scorer's band equals your label
+    filtered_out: int = 0  # labeled jobs the filters rejected; counted as the scorer's "skip"
+    missing: list[int] = field(default_factory=list)  # labeled, but neither scored nor screened
+    band_agreement: float | None = None  # share where the pipeline's verdict equals your label
     spearman: float | None = None
-    mean_score_by_label: dict[int, float] = field(default_factory=dict)
-    confusion: Counter[tuple[int, int]] = field(default_factory=Counter)  # (label, band) -> n
-    disagreements: list[Disagreement] = field(default_factory=list)  # biggest gap first
+    mean_score_by_label: dict[int, float] = field(default_factory=dict)  # scored jobs only
+    confusion: Counter[tuple[int, int | str]] = field(default_factory=Counter)  # (label, column)
+    disagreements: list[Verdict] = field(default_factory=list)  # biggest gap first
 
 
-def evaluate(labels: list[Label], scored: dict[int, sqlite3.Row]) -> EvalReport:
+def evaluate(
+    labels: list[Label],
+    scored: dict[int, sqlite3.Row],
+    rejected: dict[int, tuple[str, str]] | None = None,
+) -> EvalReport:
+    """Compare your labels with the whole pipeline: the score for jobs that pass the filters,
+    and "skip" for jobs the filters reject (`rejected`: job id -> (title, reason codes)).
+
+    Leaving rejected jobs out would make correct rejections vanish from the comparison.
+    """
+    rejected = rejected or {}
     report = EvalReport()
-    pairs: list[tuple[Label, sqlite3.Row]] = []
+    verdicts: list[Verdict] = []  # one per compared job
     for label in labels:
-        row = scored.get(label.job_id)
-        if row is None:
-            report.missing_scores.append(label.job_id)
+        if (row := scored.get(label.job_id)) is not None:
+            verdicts.append(Verdict(
+                job_id=label.job_id, title=row["title"], label=label.value, reason=label.reason,
+                score=row["score"], explanation=json.loads(row["explanation_json"]),
+            ))
+        elif label.job_id in rejected:
+            title, codes = rejected[label.job_id]
+            verdicts.append(Verdict(
+                job_id=label.job_id, title=title, label=label.value, reason=label.reason,
+                score=None, explanation=[f"Rejected by filters: {codes}"],
+            ))
+            report.filtered_out += 1
         else:
-            pairs.append((label, row))
-    report.compared = len(pairs)
-    if not pairs:
+            report.missing.append(label.job_id)
+    report.compared = len(verdicts)
+    if not verdicts:
         return report
 
-    for label, row in pairs:
-        band = score_band(row["score"])
-        report.confusion[(label.value, band)] += 1
-        if band != label.value:
-            report.disagreements.append(Disagreement(
-                job_id=label.job_id, title=row["title"], label=label.value,
-                reason=label.reason, score=row["score"],
-                explanation=json.loads(row["explanation_json"]),
-            ))
-    agree = sum(n for (lab, band), n in report.confusion.items() if lab == band)
-    report.band_agreement = agree / len(pairs)
-    report.spearman = spearman([lab.value for lab, _ in pairs], [r["score"] for _, r in pairs])
+    for v in verdicts:
+        report.confusion[(v.label, FILTERED if v.score is None else v.band)] += 1
+        if v.band != v.label:
+            report.disagreements.append(v)
+    report.band_agreement = sum(v.band == v.label for v in verdicts) / len(verdicts)
+    # A rejected job ranks below every scored one.
+    report.spearman = spearman(
+        [v.label for v in verdicts], [-1 if v.score is None else v.score for v in verdicts]
+    )
     by_label: dict[int, list[int]] = {}
-    for label, row in pairs:
-        by_label.setdefault(label.value, []).append(row["score"])
-    report.mean_score_by_label = {k: sum(v) / len(v) for k, v in sorted(by_label.items())}
-    report.disagreements.sort(key=lambda d: (-d.gap, -abs(d.score - 50)))
+    for v in verdicts:
+        if v.score is not None:
+            by_label.setdefault(v.label, []).append(v.score)
+    report.mean_score_by_label = {k: sum(s) / len(s) for k, s in sorted(by_label.items())}
+    report.disagreements.sort(key=lambda d: (-d.gap, -abs((d.score or 0) - 50)))
     return report

@@ -421,6 +421,18 @@ def scored_jobs(conn: sqlite3.Connection, scorer: str = "keyword") -> list[sqlit
     ).fetchall()
 
 
+def rejected_jobs(conn: sqlite3.Connection) -> dict[int, tuple[str, str]]:
+    """Rejected job id -> (title, reason codes such as "experience, seniority")."""
+    rows = conn.execute(
+        """SELECT j.id, j.title, f.reasons_json FROM jobs j
+           JOIN filter_results f ON f.job_id = j.id WHERE f.passed = 0"""
+    ).fetchall()
+    return {
+        job_id: (title, ", ".join(sorted({r["code"] for r in json.loads(reasons)})))
+        for job_id, title, reasons in rows
+    }
+
+
 def drop_scores_for_rejected(conn: sqlite3.Connection) -> int:
     """Remove scores of jobs that no longer pass the filters, so none shows a stale score."""
     cur = conn.execute(

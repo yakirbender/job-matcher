@@ -37,6 +37,8 @@ def test_a_good_junior_job_passes_with_notes():
         ({"title": "Stagiaire en développement logiciel"}, "internship"),
         ({"description": "Commission only role."}, "excluded_keyword"),
         ({"description": "Requires 5+ years of experience."}, "experience"),
+        ({"description": "Experience Required: 5 years Sponsorship: none"}, "experience"),
+        ({"description": "Experience Level: Senior"}, "seniority"),
         ({"metro": None, "work_mode": "onsite", "location_display": "Dallas, TX"}, "location"),
         ({"metro": None, "work_mode": "hybrid"}, "location"),
     ],

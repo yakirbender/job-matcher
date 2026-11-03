@@ -37,7 +37,7 @@ def _signed(points: int) -> str:
 
 class KeywordScorer:
     name = "keyword"
-    version = "2"  # 2: evidence-weighted skills + related-skill half credit
+    version = "3"  # 2: evidence-weighted skills + related skills; 3: stated mid level
 
     def __init__(self, cv: CvProfile, profile: Profile, vocabulary: Vocabulary) -> None:
         self.cv = cv
@@ -92,11 +92,14 @@ class KeywordScorer:
         experience = _tag(tags, "experience_years")
         years = experience.value if experience else "unknown"
         stretch = find_any(fold_title(job.title), self.profile.seniority.stretch_title)
+        stated = _tag(tags, "stated_level")
 
         if entry and entry.value == "title":
             points, why = 30, f"entry-level title ('{entry.evidence}')"
         elif stretch:
             points, why = 10, f"title says '{stretch}', which usually means 1-3 years; a stretch"
+        elif stated and stated.value == "mid":
+            points, why = 10, f"posting says mid level ('{stated.evidence}'); a stretch"
         elif years.isdigit() and int(years) <= 1:
             points, why = 26, f"asks for {years}+ years of experience"
         elif entry:
