@@ -8,11 +8,8 @@ board API for its jobs, without anyone keeping a list of companies by hand.
 Only Greenhouse and Ashby are supported here: Lever's robots.txt blocks Common Crawl's
 crawler (CCBot), so Lever addresses aren't in the index, and we respect that opt-out.
 
-The module is in two parts:
-
-  Part A (pure functions, no network): turn addresses into board references.
-  Part B (network): page through the Common Crawl index politely. Specified below,
-          tests come once Part A is reviewed.
+The first half is pure functions that turn addresses into board references; the second
+reads the Common Crawl index politely over the network.
 
 Index API facts (checked against the docs on 2026-11-03):
   - Crawl list: https://index.commoncrawl.org/collinfo.json, newest first. Each entry has
@@ -30,11 +27,15 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+import time
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
-# --- Part A: addresses -> board references --------------------------------------------
+import httpx
+
+# --- Addresses to board references ------------------------------------------------------
 
 # Host name -> which system it belongs to.
 BOARD_HOSTS = {
@@ -67,8 +68,6 @@ def board_from_url(url: str) -> BoardRef | None:
       - First segments in RESERVED_SEGMENTS are not boards -> None.
       - Query strings and fragments ("?gh_jid=1", "#apply") are ignored.
       - Anything else (other hosts, unparsable text) -> None. Never raise.
-
-    Hint: urllib.parse.urlsplit splits an address into scheme, host, path, query, ...
     """
     try:
         parts = urlsplit(url)
@@ -124,18 +123,94 @@ def boards_from_cdx_lines(lines: Iterable[str]) -> dict[BoardRef, int]:
     return counts
 
 
-# --- Part B: paging through the index (specified now, tests after Part A review) -------
-#
-# class CdxClient:
-#     def __init__(self, client: httpx.Client, *, sleep=time.sleep, delay: float = 2.0,
-#                  max_retries: int = 3): ...
-#
-#     def num_pages(self, cdx_api: str, url_pattern: str) -> int:
-#         """GET with showNumPages=true; return the "pages" number."""
-#
-#     def pages(self, cdx_api: str, url_pattern: str) -> Iterator[list[str]]:
-#         """Yield each page's lines, page=0..N-1, sleeping `delay` seconds between
-#         requests. On HTTP 503, sleep longer and retry, up to max_retries; then raise."""
-#
-# def latest_indexes(collinfo: list[dict], count: int) -> list[str]:
-#     """The cdx-api URLs of the `count` newest crawls (collinfo is newest first)."""
+# --- Reading the index ------------------------------------------------------------------
+
+
+class CdxError(Exception):
+    """The index couldn't be read: retries ran out, or its answer was unusable."""
+
+
+def latest_indexes(collinfo: list[dict[str, Any]], count: int) -> list[str]:
+    """The "cdx-api" URLs of the `count` newest crawls.
+
+    `collinfo` is the parsed collinfo.json list, already newest first.
+    """
+    result = []
+    for item in collinfo[:count]:
+        result.append(item["cdx-api"])
+    return result
+
+
+class CdxClient:
+    """Reads the Common Crawl index politely: one request at a time, with pauses.
+
+    `client` and `sleep` are injected so tests can use a fake server and skip real waits.
+    """
+
+    def __init__(
+        self,
+        client: httpx.Client,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        delay: float = 2.0,
+        backoff: float = 30.0,
+        max_retries: int = 3,
+    ) -> None:
+        self.client = client
+        self.sleep = sleep
+        self.delay = delay  # seconds to pause before every request
+        self.backoff = backoff  # extra seconds to pause after a 503 or dropped connection
+        self.max_retries = max_retries  # retries after the first try
+
+    def _get(self, url: str, params: dict[str, Any]) -> httpx.Response:
+        """One polite GET: every attempt pauses `delay` seconds first.
+
+        A 503 or a dropped connection is temporary: pause `backoff` seconds and retry, up to
+        `max_retries` times, then raise CdxError. Any other non-200 status raises at once.
+        """
+        for attempt in range(self.max_retries + 1):
+            self.sleep(self.delay)
+
+            try:
+                response = self.client.get(url, params=params)
+            except httpx.TransportError as exc:
+                # Name only the error type: its message can include the full request URL.
+                problem = f"connection failed ({type(exc).__name__})"
+            else:
+                if response.status_code == 200:
+                    return response
+                if response.status_code != 503:
+                    raise CdxError(f"index returned HTTP {response.status_code}")
+                problem = "HTTP 503"
+
+            if attempt < self.max_retries:
+                self.sleep(self.backoff)
+
+        raise CdxError(f"gave up after {self.max_retries + 1} attempts: {problem}")
+
+    def num_pages(self, cdx_api: str, url_pattern: str) -> int:
+        """How many pages of results a pattern has."""
+        params = {
+            "url": url_pattern,
+            "output": "json",
+            "showNumPages": "true",
+        }
+        response = self._get(cdx_api, params)
+        try:
+            return int(response.json()["pages"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise CdxError(f"unreadable page count: {response.text[:100]!r}") from exc
+
+    def pages(self, cdx_api: str, url_pattern: str) -> Iterator[list[str]]:
+        """Yield each page's lines in turn, ready for boards_from_cdx_lines.
+
+        A generator, so a caller that stops looping stops the requests too.
+        """
+        for page in range(self.num_pages(cdx_api, url_pattern)):
+            params = {
+                "url": url_pattern,
+                "output": "json",
+                "page": page,
+            }
+            response = self._get(cdx_api, params)
+            yield response.text.splitlines()

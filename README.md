@@ -177,6 +177,13 @@ reason next to the pipeline's explanation. Each disagreement is either a scorer 
 personal preference the profile doesn't capture yet. The `Scorer` interface (`scoring/base.py`) lets a local
 LLM or API scorer replace the keyword scorer later.
 
+## Board discovery (in progress)
+
+`src/job_matcher/discovery.py` finds Greenhouse and Ashby job boards from Common Crawl's URL
+index, so the tool can read companies' public board APIs without a hand-kept company list.
+It isn't connected to the CLI yet and has only run against a fake server in tests. Lever's
+robots.txt blocks Common Crawl's crawler, so Lever boards can't be discovered this way.
+
 ## Limitations
 
 - Adzuna returns only a ~500-character description snippet ending in "…". Requirements

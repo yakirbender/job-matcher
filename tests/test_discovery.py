@@ -1,9 +1,3 @@
-"""Part A tests. They fail until board_from_url and boards_from_cdx_lines are written.
-
-Run just these:  uv run pytest tests/test_discovery.py -q
-Run one test:    uv run pytest tests/test_discovery.py -q -k ashby
-"""
-
 import json
 
 import pytest
