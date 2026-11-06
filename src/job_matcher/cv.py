@@ -35,7 +35,7 @@ Spellings = dict[str, list[str]]  # skill -> every spelling that counts
 @dataclass(frozen=True)
 class Vocabulary:
     jobs: Spellings  # for posting text
-    cv: Spellings  # for your CV: also matches ambiguous bare names like "C"
+    cv: Spellings  # for CV text: also matches ambiguous bare names like "C"
     related: dict[str, list[str]] = field(default_factory=dict)  # job skill -> half-credit skills
 
 

@@ -94,7 +94,7 @@ def test_evaluate_reports_agreement_and_biggest_disagreements_first():
         labels.Label(1, 2, "fit", False),       # strong, apply: agree
         labels.Label(2, 1, "stretch", False),   # possible, maybe: agree
         labels.Label(3, 0, "spam", False),      # weak, skip: agree
-        labels.Label(4, 0, "defense", False),   # strong, but you'd skip: gap 2
+        labels.Label(4, 0, "defense", False),   # strong, but labeled skip: gap 2
         labels.Label(5, 1, "", False),          # weak, maybe: gap 1
         labels.Label(99, 2, "", False),         # neither scored nor screened
     ], scored)
@@ -108,8 +108,8 @@ def test_evaluate_reports_agreement_and_biggest_disagreements_first():
 
 
 def test_filter_rejections_count_as_skip():
-    # The real case: after the experience fix, two jobs you labeled skip were rejected by the
-    # filters. They should count as agreements, not drop out of the comparison.
+    # Real case: after the experience fix, two jobs labeled skip were rejected by the filters.
+    # They should count as agreements, not drop out of the comparison.
     scored = {r["id"]: r for r in rows([(1, "A", 66), (2, "B", 30)])}
     rejected = {159: ("React Developer", "experience"), 158: ("Rust Developer", "seniority"),
                 7: ("Test Engineer", "location")}
@@ -118,7 +118,7 @@ def test_filter_rejections_count_as_skip():
         labels.Label(2, 0, "", False),       # weak, skip: agree
         labels.Label(159, 0, "5+ years", False),
         labels.Label(158, 0, "too senior", False),
-        labels.Label(7, 2, "great", False),  # filtered out, but you'd apply: a filter mistake
+        labels.Label(7, 2, "great", False),  # filtered out, but labeled apply: a filter mistake
     ], scored, rejected)
     assert report.compared == 5
     assert report.filtered_out == 3

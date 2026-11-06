@@ -1,11 +1,11 @@
-"""Free, local, explainable scoring: skill overlap with your CV plus experience-level fit,
+"""Free, local, explainable scoring: skill overlap with the CV plus experience-level fit,
 adjusted by the profile's ranking points. No API calls.
 
 Base score (max 90):
   skills  0-60      30 is neutral. Moves toward 60 or 0 with the share of the job's
-                    named skills you have (related skills count half), weighted by how
-                    many it names, n / (n + 2): one named skill moves it at most 10
-                    points, since snippets often name only one or two.
+                    named skills found in the CV (related skills count half), weighted
+                    by how many it names, n / (n + 2): one named skill moves it at most
+                    10 points, since snippets often name only one or two.
   level   up to 30  entry-level title 30, entry-level wording 22, 0-1 years 26,
                     2 years 20, unstated 15, stretch title ("II") 10
 Adjustments: French, metro, clearance, suspicious (profile.example.yaml `ranking`). Clamped 0-100.

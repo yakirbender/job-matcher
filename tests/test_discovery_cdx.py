@@ -71,7 +71,22 @@ def test_get_gives_up_after_max_retries():
     assert len(calls) == 3  # the first try, plus 2 retries
 
 
-@pytest.mark.parametrize("status", [400, 404, 500])
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+def test_get_retries_temporary_server_errors(status):
+    # The real index returned 504s on requests that worked on a later try.
+    responses = iter([httpx.Response(status), httpx.Response(200, text="ok")])
+    client, sleeps = make_client(lambda request: next(responses))
+    assert client._get(API, {}).text == "ok"
+    assert sleeps == [2.0, 30.0, 2.0]
+
+
+def test_get_names_the_last_status_when_it_gives_up():
+    client, _ = make_client(lambda request: httpx.Response(504), max_retries=1)
+    with pytest.raises(CdxError, match="HTTP 504"):
+        client._get(API, {})
+
+
+@pytest.mark.parametrize("status", [400, 403, 404])
 def test_get_does_not_retry_other_errors(status):
     calls = []
 

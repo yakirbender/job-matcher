@@ -1,7 +1,7 @@
-"""Hand-labeled evaluation set: export jobs for you to label, then compare with the scorer.
+"""Hand-labeled evaluation set: export jobs to label, then compare labels with the pipeline.
 
-Labels: 2 = apply, 1 = maybe, 0 = skip. The export leaves scores out so they can't anchor
-your judgment, and shuffles the order so position doesn't hint at them either.
+Labels: 2 = apply, 1 = maybe, 0 = skip. The export leaves scores out so they can't anchor the
+labeler, and shuffles the order so position doesn't reveal them either.
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def sample_for_labeling(
 
 
 def write_label_file(path: Path, rows: list[sqlite3.Row], *, overwrite: bool = False) -> None:
-    """Write the file to label. Refuses to replace an existing one unless told to, since
-    it may hold labels you've already entered."""
+    """Write the file to label. Won't replace an existing file, which may hold labels,
+    unless `overwrite` is set."""
     if path.exists() and not overwrite:
         raise FileExistsError(f"{path} already exists; it may contain your labels")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -182,7 +182,7 @@ class EvalReport:
     compared: int = 0
     filtered_out: int = 0  # labeled jobs the filters rejected; counted as the scorer's "skip"
     missing: list[int] = field(default_factory=list)  # labeled, but neither scored nor screened
-    band_agreement: float | None = None  # share where the pipeline's verdict equals your label
+    band_agreement: float | None = None  # share where the pipeline's verdict equals the label
     spearman: float | None = None
     mean_score_by_label: dict[int, float] = field(default_factory=dict)  # scored jobs only
     confusion: Counter[tuple[int, int | str]] = field(default_factory=Counter)  # (label, column)
@@ -194,7 +194,7 @@ def evaluate(
     scored: dict[int, sqlite3.Row],
     rejected: dict[int, tuple[str, str]] | None = None,
 ) -> EvalReport:
-    """Compare your labels with the whole pipeline: the score for jobs that pass the filters,
+    """Compare labels with the whole pipeline: the score for jobs that pass the filters,
     and "skip" for jobs the filters reject (`rejected`: job id -> (title, reason codes)).
 
     Leaving rejected jobs out would make correct rejections vanish from the comparison.

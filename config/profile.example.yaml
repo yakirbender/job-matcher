@@ -208,8 +208,8 @@ ranking:
     tampa: 3
     miami: 3
     montreal: 3
-  # "Ability to obtain" costs nothing. An already-active clearance
-  # is rare for new grads, so those roles rank lower but stay visible.
+  # "Ability to obtain" costs nothing. An already-active clearance is rare for new grads,
+  # so those roles rank lower but stay visible.
   clearance:
     obtainable: 0
     required: -5      # clearance mentioned, unclear whether it must be active

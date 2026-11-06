@@ -15,8 +15,8 @@ class ScoreResult:
     score: int  # 0-100
     components: dict[str, int] = field(default_factory=dict)  # name -> points
     explanation: list[str] = field(default_factory=list)  # one line per factor
-    matched: list[str] = field(default_factory=list)  # job skills you have
-    missing: list[str] = field(default_factory=list)  # job skills not in your CV
+    matched: list[str] = field(default_factory=list)  # job skills found in the CV
+    missing: list[str] = field(default_factory=list)  # job skills not in the CV
 
 
 class Scorer(Protocol):

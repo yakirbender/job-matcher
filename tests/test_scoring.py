@@ -45,7 +45,7 @@ def test_partial_match_lists_missing_skills():
 
 
 def test_one_named_skill_cannot_swing_the_score_far():
-    # The real case that exposed the old formula: one named skill, which you have.
+    # Real case that exposed the old formula: one named skill, present in the CV.
     hit = score(make_job(title="Embedded Software Engineer", metro=None,
                          description="Embedded C software for train control."))
     assert hit.matched == ["c"]
@@ -58,7 +58,7 @@ def test_one_named_skill_cannot_swing_the_score_far():
 
 
 def test_related_skills_earn_half_credit():
-    # The real French Angular posting: you know React and Vue, not Angular.
+    # Real French Angular posting: the CV has React and Vue, not Angular.
     result = score(make_job(title="Développeur Angular", metro=None, description="Angular."))
     assert result.matched == [] and result.missing == []
     assert result.components["skills"] == 30  # half credit on 1 skill = neutral

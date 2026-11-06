@@ -1,16 +1,16 @@
-# Skills the keyword scorer recognizes in both your CV and job postings.
+# Skills the keyword scorer recognizes in both the CV and job postings.
 #
 # Each entry is a canonical name and its other spellings (English and French). Matching
 # ignores case and accents and works on whole words, so "c#" won't match "c" and "java"
-# won't match "javascript". Add anything your CV or target jobs use.
+# won't match "javascript".
 
-# Names that are too ambiguous to match bare in job text ("C-level", "R&D", "go to
-# market"). Bare, they only count in your CV, where they appear in a skills list;
-# in postings they need one of their longer spellings ("C/C++", "golang").
+# Names too ambiguous to match bare in job text ("C-level", "R&D", "go to market"). Bare,
+# they only count in the CV, where they appear in a skills list; in postings they need
+# one of their longer spellings ("C/C++", "golang").
 cv_only_bare_names: [c, r, go]
 
-# Half credit: a job skill you don't have, but a close relative you do. "angular:
-# [react, vue]" means knowing React or Vue counts half toward an Angular requirement.
+# Half credit for a close relative: "angular: [react, vue]" means React or Vue in the CV
+# counts half toward an Angular requirement.
 related_skills:
   angular: [react, vue]
   react: [vue, angular]
