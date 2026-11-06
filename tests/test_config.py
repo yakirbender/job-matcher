@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from job_matcher.config import SearchConfig, Settings, load_search_config
+from job_matcher.config import SearchConfig, Settings, load_search_config, personal_or_example
 
 REPO_CONFIG = Path(__file__).parents[1] / "config" / "searches.example.yaml"
 
@@ -67,6 +67,15 @@ def _config(**region):
 def test_invalid_configs_are_rejected(region):
     with pytest.raises(ValidationError):
         SearchConfig.model_validate(_config(**region))
+
+
+def test_a_private_config_wins_over_the_example(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    assert personal_or_example("profile") == Path("config/profile.example.yaml")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "profile.yaml").write_text("x: 1", encoding="utf-8")
+    assert personal_or_example("profile") == Path("private/profile.yaml")
+    assert personal_or_example("searches") == Path("config/searches.example.yaml")
 
 
 def test_settings_read_env_and_hide_keys(monkeypatch, tmp_path):

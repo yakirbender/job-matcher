@@ -1,4 +1,4 @@
-"""The job-search profile (config/profile.example.yaml) that taggers and filters read."""
+"""The job-search profile that taggers and filters read."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
-DEFAULT_PROFILE_PATH = Path("config/profile.example.yaml")
+from job_matcher.config import personal_or_example
+
+DEFAULT_PROFILE_PATH = personal_or_example("profile")
 
 
 class Seniority(BaseModel):

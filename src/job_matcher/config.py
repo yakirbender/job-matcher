@@ -13,7 +13,14 @@ from pydantic import BaseModel, Field, model_validator
 
 from job_matcher.models import SearchSpec
 
-DEFAULT_CONFIG_PATH = Path("config/searches.example.yaml")
+
+def personal_or_example(name: str) -> Path:
+    """private/<name>.yaml if it exists (git-ignored), otherwise the tracked example."""
+    personal = Path("private") / f"{name}.yaml"
+    return personal if personal.exists() else Path("config") / f"{name}.example.yaml"
+
+
+DEFAULT_CONFIG_PATH = personal_or_example("searches")
 DEFAULT_DB_PATH = Path("data/jobs.db")
 
 

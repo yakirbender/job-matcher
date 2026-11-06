@@ -24,6 +24,10 @@ uv sync
 Copy `.env.example` to `.env` in the project root and add your Adzuna `app_id` and `app_key`
 (developer.adzuna.com → Dashboard → API Access Details). `.env` is git-ignored.
 
+`config/` holds example settings. To use your own, copy `config/profile.example.yaml` to
+`private/profile.yaml` and `config/searches.example.yaml` to `private/searches.yaml`, and
+edit those. `private/` is git-ignored, and the app uses a file there when it exists.
+
 ## Usage
 
 ```bash
@@ -47,15 +51,15 @@ uv run jm stats                                 # what's in the database
 | Option | Effect |
 |---|---|
 | `-r, --region` | Only these regions (repeatable). |
-| `-t, --term` | Only these exact terms from `searches.example.yaml` (repeatable). |
+| `-t, --term` | Only these exact terms from the searches config (repeatable). |
 | `--limit N` | Stop after N API calls in this run. |
 | `--title-only / --full-text` | Match terms in job titles (config default) or anywhere in the posting. |
 | `--max-pages N` | Pages per search (50 results each). |
 | `--all-pages` | Don't stop a search at the first page with nothing new. |
 | `--plan` | Show what would run, without calling the API. |
 
-Searches, term lists, and limits live in `config/searches.example.yaml`. The database is
-`data/jobs.db` (override with `JM_DB_PATH`).
+Searches, term lists, and limits live in the searches config. The database is `data/jobs.db`
+(override with `JM_DB_PATH`).
 
 ## Request budgets
 
@@ -83,7 +87,7 @@ with nothing new.
 
 ## Filtering (`jm filter`)
 
-`config/profile.example.yaml` holds the rules. Matching ignores case and accents, works on whole
+The profile config holds the rules. Matching ignores case and accents, works on whole
 words, and folds French inclusive titles first ("Développeur.euse principal.e",
 "Concepteur(trice)", "Développeur · euse" → "développeur principal", "concepteur").
 Every stored job is re-screened on each run, so profile changes apply to old jobs too.
@@ -146,7 +150,7 @@ Scores are 0-100, rebuilt on every run, and explained line by line in `jm show <
   because snippets often name only one or two: a single named skill moves it at most 10.
 - **Level (10-30):** entry-level title 30, 0-1 years 26, entry-level wording 22, 2 years 20,
   unstated 15, stretch title ("II") 10.
-- **Adjustments** (`ranking` in `config/profile.example.yaml`): French required +8 / asset +4,
+- **Adjustments** (`ranking` in the profile config): French required +8 / asset +4,
   a bonus per metro, clearance (obtainable 0, unclear -5, active -15,
   polygraph -5 more), suspicious -15. Role families are not boosted; related experience from
   your CV (e.g. tutoring for training roles) is shown but not scored.
@@ -225,3 +229,7 @@ uv run ruff check .
 `tests/fixtures/adzuna_search_page.json` holds invented results in Adzuna's response format.
 
 Job listings come from the [Adzuna API](https://www.adzuna.com).
+
+## License
+
+[MIT](LICENSE)
