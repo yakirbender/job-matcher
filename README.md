@@ -181,8 +181,13 @@ LLM or API scorer replace the keyword scorer later.
 
 `src/job_matcher/discovery.py` finds Greenhouse and Ashby job boards from Common Crawl's URL
 index, so the tool can read companies' public board APIs without a hand-kept company list.
-It isn't connected to the CLI yet and has only run against a fake server in tests. Lever's
+It isn't connected to the CLI yet, and only small live checks have run so far. Lever's
 robots.txt blocks Common Crawl's crawler, so Lever boards can't be discovered this way.
+
+The index can cut a response short while still answering 200, so discovery uses small
+per-character queries, reads each until two reads agree, and splits a prefix whose reads
+never settle. A query can also stay unavailable through its retries, which currently ends
+the run.
 
 ## Limitations
 

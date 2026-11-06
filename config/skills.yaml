@@ -101,6 +101,7 @@ git: [github, gitlab, version control, contrôle de version]
 ci/cd: [cicd, continuous integration, intégration continue, jenkins, github actions, azure devops]
 terraform: []
 jira: []
+claude code: []
 
 # Practices and testing
 oop: [object-oriented, object oriented, object-oriented programming, programmation orientée objet, orienté objet]

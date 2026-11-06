@@ -20,6 +20,8 @@ from job_matcher.discovery import BoardRef, board_from_url, boards_from_cdx_line
         # Fragments are ignored.
         ("https://jobs.ashbyhq.com/onebrief/abc-123#apply", BoardRef("ashby", "onebrief")),
         ("https://jobs.ashbyhq.com/onebrief", BoardRef("ashby", "onebrief")),
+        # Real Ashby names can hold encoded spaces; the API accepts them, in any case.
+        ("https://jobs.ashbyhq.com/Anthos%20Capital/x", BoardRef("ashby", "anthos%20capital")),
     ],
 )
 def test_board_pages_give_a_board(url, expected):
@@ -38,6 +40,8 @@ def test_board_pages_give_a_board(url, expected):
         "https://jobs.lever.co/acme",                             # Lever: not supported
         "https://example.com/acme/jobs/1",
         "https://boards.greenhouse.io/acme<script>/jobs",         # invalid token characters
+        "https://jobs.ashbyhq.com/acme%zz",                       # not a real encoding
+        "https://jobs.ashbyhq.com/%",
         "not a url at all",
         "",
         "http://[bad",                                            # urlsplit itself raises on this

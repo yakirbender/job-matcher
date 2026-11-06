@@ -53,6 +53,11 @@ def test_skill_matching_respects_word_boundaries():
     }
 
 
+def test_multi_word_tool_names_match_as_a_phrase():
+    assert find_skills("Built with Claude Code.", VOCAB.jobs) == {"claude code"}
+    assert find_skills("Claude from accounting wrote code.", VOCAB.jobs) == set()
+
+
 def test_related_skills_must_be_defined(tmp_path):
     path = tmp_path / "skills.yaml"
     path.write_text("java: []\nrelated_skills:\n  kotlin: [java]\n", encoding="utf-8")

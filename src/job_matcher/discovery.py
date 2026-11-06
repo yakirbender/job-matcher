@@ -58,8 +58,9 @@ def board_from_url(url: str) -> BoardRef | None:
     """The board an address belongs to, or None if it isn't a company board page.
 
     The host must be in BOARD_HOSTS (case and port are ignored). The token is the first
-    path segment, lowercased, and may only contain letters, digits, "-" and "_". Reserved
-    segments, other hosts, and malformed addresses give None; this never raises.
+    path segment, lowercased (the board APIs ignore case), and may only contain letters,
+    digits, "-", "_" and percent-encoded characters like "%20". Reserved segments, other
+    hosts, and malformed addresses give None; this never raises.
     """
     try:
         parts = urlsplit(url)
@@ -77,7 +78,7 @@ def board_from_url(url: str) -> BoardRef | None:
 
     if token in RESERVED_SEGMENTS:
         return None
-    if not re.fullmatch(r"[a-z0-9_-]+", token):
+    if not re.fullmatch(r"(?:[a-z0-9_-]|%[0-9a-f]{2})+", token):
         return None
 
     return BoardRef(ats, token)
@@ -206,3 +207,68 @@ class CdxClient:
             }
             response = self._get(cdx_api, params)
             yield response.text.splitlines()
+
+
+# --- Reading reliably -------------------------------------------------------------------
+#
+# The index can cut a response short and still answer 200, and one response can't show
+# that it's incomplete. Measured 2026-11-06: 8 of 10 per-letter queries gave identical
+# results across 3 reads, while the two largest disagreed (68, 4703, 4703 lines and
+# 5823, 6795, 1251 lines). So queries stay small, are read until two reads agree, and a
+# prefix whose reads never agree is split into smaller ones.
+
+# First characters a board token can start with. Case doesn't matter: the index folds it.
+PREFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+@dataclass
+class QueryResult:
+    """What one pattern yielded, and whether repeated reads agreed on it."""
+
+    pattern: str
+    boards: dict[BoardRef, int]
+    confirmed: bool
+    line_counts: list[int]
+
+
+def prefix_patterns(host: str, prefix: str = "") -> list[str]:
+    """One index pattern per next character: "host/a*", "host/b*", ... after `prefix`."""
+    return [f"{host}/{prefix}{char}*" for char in PREFIX_CHARS]
+
+
+def read_until_stable(
+    client: CdxClient, cdx_api: str, pattern: str, *, max_reads: int = 4
+) -> QueryResult:
+    """Read a pattern until the largest line count has been seen twice.
+
+    Cut-short responses are smaller, so the largest count is the one worth confirming.
+    Boards from every read are kept, even when the reads never agree.
+    """
+    boards: dict[BoardRef, int] = {}
+    line_counts: list[int] = []
+    for _ in range(max_reads):
+        lines = [line for page in client.pages(cdx_api, pattern) for line in page]
+        line_counts.append(len(lines))
+        for board, captures in boards_from_cdx_lines(lines).items():
+            boards[board] = max(boards.get(board, 0), captures)
+        if line_counts.count(max(line_counts)) >= 2:
+            return QueryResult(pattern, boards, True, line_counts)
+    return QueryResult(pattern, boards, False, line_counts)
+
+
+def discover_host(
+    client: CdxClient, cdx_api: str, host: str, *, max_depth: int = 2, max_reads: int = 4
+) -> Iterator[QueryResult]:
+    """Yield a result for each prefix of a host, splitting prefixes whose reads disagree.
+
+    A generator, so each result can be saved as soon as it's read. `max_depth` is the longest
+    prefix to try: with 2, "a*" can split into "aa*", "ab*", ... but no further.
+    """
+    pending = prefix_patterns(host)
+    while pending:
+        pattern = pending.pop(0)
+        result = read_until_stable(client, cdx_api, pattern, max_reads=max_reads)
+        yield result
+        prefix = pattern.removeprefix(f"{host}/").removesuffix("*")
+        if not result.confirmed and len(prefix) < max_depth:
+            pending.extend(prefix_patterns(host, prefix))
