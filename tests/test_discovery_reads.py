@@ -5,7 +5,7 @@ import json
 from job_matcher.discovery import (
     PREFIX_CHARS,
     BoardRef,
-    discover_host,
+    pending_patterns,
     prefix_patterns,
     read_until_stable,
 )
@@ -83,37 +83,27 @@ def test_an_empty_query_is_confirmed_with_no_boards():
     assert result.boards == {}
 
 
-def test_discover_host_reads_every_prefix_once_when_all_is_stable():
-    index = FakeIndex({f"{HOST}/a*": [lines_for("acme")]})
-    results = list(discover_host(index, API, HOST))
-    assert [r.pattern for r in results] == prefix_patterns(HOST)
-    assert all(r.confirmed for r in results)
+def test_pending_patterns_starts_with_every_prefix():
+    assert pending_patterns(HOST, {}) == prefix_patterns(HOST)
 
 
-def test_discover_host_splits_a_prefix_whose_reads_disagree():
-    unstable = [lines_for("ab"), lines_for("ab", "ac"), lines_for("ad"),
-                lines_for("ae", "af", "ag")]
-    index = FakeIndex({f"{HOST}/a*": unstable, f"{HOST}/ab*": [lines_for("ab")]})
-    results = {r.pattern: r for r in discover_host(index, API, HOST)}
-    assert not results[f"{HOST}/a*"].confirmed
-    assert results[f"{HOST}/ab*"].confirmed
-    assert set(prefix_patterns(HOST, "a")) <= set(results)
-    assert f"{HOST}/ba*" not in results  # stable prefixes aren't split
+def test_pending_patterns_skips_finished_queries():
+    finished = {f"{HOST}/a*": True, f"{HOST}/b*": False}
+    pending = pending_patterns(HOST, finished, max_depth=1)
+    assert f"{HOST}/a*" not in pending and f"{HOST}/b*" not in pending
+    assert f"{HOST}/c*" in pending
 
 
-def test_discover_host_stops_splitting_at_max_depth():
-    def unstable():
-        return [lines_for("a"), lines_for("a", "j"), lines_for("c", "d", "e"),
-                lines_for("f", "g", "h", "i")]
-
-    index = FakeIndex({f"{HOST}/a*": unstable(), f"{HOST}/ab*": unstable()})
-    results = {r.pattern: r for r in discover_host(index, API, HOST, max_depth=2)}
-    assert not results[f"{HOST}/ab*"].confirmed
-    assert f"{HOST}/aba*" not in results
+def test_pending_patterns_opens_up_a_prefix_that_never_settled():
+    pending = pending_patterns(HOST, {f"{HOST}/a*": False})
+    assert set(prefix_patterns(HOST, "a")) <= set(pending)
+    assert f"{HOST}/a*" not in pending
 
 
-def test_discover_host_is_lazy():
-    index = FakeIndex({})
-    results = discover_host(index, API, HOST)
-    next(results)
-    assert len(index.asked) == 2  # one query, read twice; nothing else requested yet
+def test_pending_patterns_leaves_a_confirmed_prefix_closed():
+    assert f"{HOST}/ab*" not in pending_patterns(HOST, {f"{HOST}/a*": True})
+
+
+def test_pending_patterns_stops_at_max_depth():
+    finished = {f"{HOST}/a*": False, f"{HOST}/ab*": False}
+    assert f"{HOST}/aba*" not in pending_patterns(HOST, finished, max_depth=2)

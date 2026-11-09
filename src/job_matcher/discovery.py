@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -256,19 +256,23 @@ def read_until_stable(
     return QueryResult(pattern, boards, False, line_counts)
 
 
-def discover_host(
-    client: CdxClient, cdx_api: str, host: str, *, max_depth: int = 2, max_reads: int = 4
-) -> Iterator[QueryResult]:
-    """Yield a result for each prefix of a host, splitting prefixes whose reads disagree.
+def pending_patterns(
+    host: str, finished: Mapping[str, bool], max_depth: int = 2
+) -> list[str]:
+    """The patterns a host still needs, given which are finished (pattern -> confirmed).
 
-    A generator, so each result can be saved as soon as it's read. `max_depth` is the longest
-    prefix to try: with 2, "a*" can split into "aa*", "ab*", ... but no further.
+    A finished prefix whose reads never agreed opens up into longer prefixes, down to
+    `max_depth` characters: with 2, "a*" can split into "aa*", "ab*", ... but no further.
+    Working this out from saved results is what lets a stopped run resume.
     """
-    pending = prefix_patterns(host)
-    while pending:
-        pattern = pending.pop(0)
-        result = read_until_stable(client, cdx_api, pattern, max_reads=max_reads)
-        yield result
+    pending = []
+    to_check = prefix_patterns(host)
+    while to_check:
+        pattern = to_check.pop(0)
+        if pattern not in finished:
+            pending.append(pattern)
+            continue
         prefix = pattern.removeprefix(f"{host}/").removesuffix("*")
-        if not result.confirmed and len(prefix) < max_depth:
-            pending.extend(prefix_patterns(host, prefix))
+        if not finished[pattern] and len(prefix) < max_depth:
+            to_check.extend(prefix_patterns(host, prefix))
+    return pending

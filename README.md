@@ -190,8 +190,8 @@ robots.txt blocks Common Crawl's crawler, so Lever boards can't be discovered th
 
 The index can cut a response short while still answering 200, so discovery uses small
 per-character queries, reads each until two reads agree, and splits a prefix whose reads
-never settle. A query can also stay unavailable through its retries, which currently ends
-the run.
+never settle. Each finished query is saved at once, so a stopped run resumes where it left
+off. A failed query is recorded and retried later, and 5 failures in a row stop the run.
 
 ## Limitations
 

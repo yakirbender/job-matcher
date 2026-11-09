@@ -1,12 +1,15 @@
-"""Pipeline stages: fetch postings from a source, then screen them against the profile."""
+"""Pipeline stages: fetch postings, screen and score them, and discover job boards."""
 
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from job_matcher import db
+from job_matcher.discovery import CdxClient, CdxError, pending_patterns, read_until_stable
 from job_matcher.filters import evaluate
 from job_matcher.location import infer_work_mode, metro_for
 from job_matcher.models import Job, SearchSpec
@@ -114,6 +117,77 @@ def fetch(
             errors=report.errors,
             stopped_reason=report.stopped_reason,
         )
+    return report
+
+
+@dataclass
+class DiscoveryReport:
+    finished: int = 0  # queries completed in this run
+    new_boards: int = 0
+    failed: list[str] = field(default_factory=list)  # still failing when the run ended
+    stopped_reason: str | None = None
+
+
+def discover_crawl(
+    conn: sqlite3.Connection,
+    client: CdxClient,
+    crawl: str,
+    cdx_api: str,
+    hosts: list[str],
+    *,
+    max_depth: int = 2,
+    max_reads: int = 4,
+    max_attempts: int = 3,
+    stop_after_failures: int = 5,
+    retry_pause: float = 300.0,
+    limit: int | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> DiscoveryReport:
+    """Read one crawl's index for job boards, saving each query as it finishes.
+
+    Finished queries are skipped, so rerunning resumes. A failed query is recorded and
+    retried after the others, up to `max_attempts` times per run. Too many failures in a
+    row stops the run, since pressing on risks a block from the index.
+    """
+    report = DiscoveryReport()
+    boards_before = db.board_count(conn)
+    attempts: Counter[str] = Counter()
+    failures_in_a_row = 0
+
+    def to_do() -> list[str]:
+        rows = db.discovery_queries(conn, crawl)
+        finished = {p: r["status"] == "confirmed" for p, r in rows.items()
+                    if r["status"] != "failed"}
+        return [pattern for host in hosts
+                for pattern in pending_patterns(host, finished, max_depth)
+                if attempts[pattern] < max_attempts]
+
+    while (batch := to_do()) and report.stopped_reason is None:
+        any_failed = False
+        for pattern in batch:
+            if limit is not None and report.finished >= limit:
+                report.stopped_reason = "reached the query limit"
+                break
+            attempts[pattern] += 1
+            try:
+                result = read_until_stable(client, cdx_api, pattern, max_reads=max_reads)
+            except CdxError as exc:
+                db.save_query_failure(conn, crawl, pattern, str(exc))
+                any_failed = True
+                failures_in_a_row += 1
+                if failures_in_a_row >= stop_after_failures:
+                    report.stopped_reason = f"{failures_in_a_row} failed queries in a row"
+                    break
+                continue
+            failures_in_a_row = 0
+            db.save_query_result(conn, crawl, result)
+            report.finished += 1
+        if any_failed and report.stopped_reason is None and to_do():
+            sleep(retry_pause)
+
+    report.new_boards = db.board_count(conn) - boards_before
+    report.failed = sorted(p for p, r in db.discovery_queries(conn, crawl).items()
+                           if r["status"] == "failed")
     return report
 
 

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 from job_matcher.models import Job, SearchSpec
 
 if TYPE_CHECKING:
+    from job_matcher.discovery import QueryResult
     from job_matcher.filters import FilterResult
     from job_matcher.scoring.base import ScoreResult
     from job_matcher.tagging import Tag
@@ -122,6 +123,32 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (job_id, scorer)
     );
     CREATE INDEX idx_scores_score ON scores(scorer, score);
+    """,
+    """
+    -- Company job boards found in the Common Crawl index. Only ever added to or refreshed.
+    CREATE TABLE boards (
+        ats         TEXT NOT NULL,
+        token       TEXT NOT NULL,
+        captures    INTEGER NOT NULL,
+        first_crawl TEXT NOT NULL,
+        last_crawl  TEXT NOT NULL,
+        first_seen  TEXT NOT NULL,
+        last_seen   TEXT NOT NULL,
+        PRIMARY KEY (ats, token)
+    );
+
+    -- One row per index query, so an interrupted run can resume. A query's status is
+    -- confirmed (two reads agreed), unconfirmed (they never did), or failed (it errored).
+    CREATE TABLE discovery_queries (
+        crawl            TEXT NOT NULL,
+        pattern          TEXT NOT NULL,
+        status           TEXT NOT NULL,
+        line_counts_json TEXT NOT NULL DEFAULT '[]',
+        attempts         INTEGER NOT NULL DEFAULT 0,
+        last_error       TEXT,
+        updated_at       TEXT NOT NULL,
+        PRIMARY KEY (crawl, pattern)
+    );
     """,
 ]
 
@@ -524,6 +551,74 @@ def screening_summary(conn: sqlite3.Connection) -> dict[str, object]:
         """
     ).fetchall()
     return {"total": total, "passed": passed, "reasons": [tuple(r) for r in reasons]}
+
+
+# --- board discovery -------------------------------------------------------
+
+
+def _save_query(
+    conn: sqlite3.Connection,
+    crawl: str,
+    pattern: str,
+    status: str,
+    line_counts: list[int],
+    error: str | None,
+    now: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO discovery_queries
+            (crawl, pattern, status, line_counts_json, attempts, last_error, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT (crawl, pattern) DO UPDATE SET
+            status = excluded.status,
+            line_counts_json = excluded.line_counts_json,
+            attempts = attempts + 1,
+            last_error = excluded.last_error,
+            updated_at = excluded.updated_at
+        """,
+        (crawl, pattern, status, json.dumps(line_counts), error, now),
+    )
+
+
+def save_query_result(
+    conn: sqlite3.Connection, crawl: str, result: QueryResult, now: str | None = None
+) -> None:
+    """Save a finished query and its boards in one transaction."""
+    now = now or utcnow()
+    status = "confirmed" if result.confirmed else "unconfirmed"
+    with conn:
+        conn.executemany(
+            """
+            INSERT INTO boards (ats, token, captures, first_crawl, last_crawl, first_seen,
+                                last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (ats, token) DO UPDATE SET
+                captures = MAX(captures, excluded.captures),
+                first_crawl = MIN(first_crawl, excluded.first_crawl),
+                last_crawl = MAX(last_crawl, excluded.last_crawl),
+                last_seen = excluded.last_seen
+            """,
+            [(board.ats, board.token, captures, crawl, crawl, now, now)
+             for board, captures in result.boards.items()],
+        )
+        _save_query(conn, crawl, result.pattern, status, result.line_counts, None, now)
+
+
+def save_query_failure(
+    conn: sqlite3.Connection, crawl: str, pattern: str, error: str, now: str | None = None
+) -> None:
+    with conn:
+        _save_query(conn, crawl, pattern, "failed", [], error, now or utcnow())
+
+
+def discovery_queries(conn: sqlite3.Connection, crawl: str) -> dict[str, sqlite3.Row]:
+    rows = conn.execute("SELECT * FROM discovery_queries WHERE crawl = ?", (crawl,)).fetchall()
+    return {row["pattern"]: row for row in rows}
+
+
+def board_count(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM boards").fetchone()[0]
 
 
 # --- reporting ------------------------------------------------------------
