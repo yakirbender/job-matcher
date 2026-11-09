@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from job_matcher.discovery import BoardRef
 from job_matcher.models import Job, SearchSpec
 
 if TYPE_CHECKING:
@@ -619,6 +620,20 @@ def discovery_queries(conn: sqlite3.Connection, crawl: str) -> dict[str, sqlite3
 
 def board_count(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM boards").fetchone()[0]
+
+
+def saved_boards(conn: sqlite3.Connection) -> set[BoardRef]:
+    return {BoardRef(r["ats"], r["token"]) for r in conn.execute("SELECT ats, token FROM boards")}
+
+
+def confirmed_prefixes(conn: sqlite3.Connection) -> dict[str, set[str]]:
+    """Host -> prefixes whose query was confirmed in any crawl ("host/ab*" gives "ab")."""
+    result: dict[str, set[str]] = {}
+    rows = conn.execute("SELECT DISTINCT pattern FROM discovery_queries WHERE status = 'confirmed'")
+    for (pattern,) in rows:
+        host, _, prefix = pattern.partition("/")
+        result.setdefault(host, set()).add(prefix.removesuffix("*"))
+    return result
 
 
 # --- reporting ------------------------------------------------------------

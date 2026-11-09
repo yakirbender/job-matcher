@@ -9,6 +9,7 @@ the survivors against your CV with a free, local keyword scorer.
 | Part | Cost |
 |---|---|
 | Filtering, tagging, scoring (everything local) | Free |
+| Board discovery (Common Crawl index) | Free |
 | Adzuna, trial key | Free, 25 calls total |
 | Adzuna, regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
 | LLM scoring (optional, not built) | A local model via Ollama is free; the Claude API needs prepaid credits |
@@ -183,15 +184,33 @@ LLM or API scorer replace the keyword scorer later.
 
 ## Board discovery (in progress)
 
-`src/job_matcher/discovery.py` finds Greenhouse and Ashby job boards from Common Crawl's URL
-index, so the tool can read companies' public board APIs without a hand-kept company list.
-It isn't connected to the CLI yet, and only small live checks have run so far. Lever's
-robots.txt blocks Common Crawl's crawler, so Lever boards can't be discovered this way.
+`jm discover` finds Greenhouse and Ashby job boards in Common Crawl's URL index, so the
+tool can read companies' public board APIs without a hand-kept company list. It's free, but
+slow: the index is heavily rate-limited and often times out, so a full run can take hours.
+Boards are saved to the database, but nothing reads their jobs yet. Lever's robots.txt
+blocks Common Crawl's crawler, so Lever boards can't be discovered this way.
+
+```bash
+uv run jm discover --ats ashby --limit 3   # a small first run
+uv run jm discover                         # the newest crawl, both systems
+```
+
+| Option | Effect |
+|---|---|
+| `--crawls N` | How many of the newest crawls to read (default 1: one crawl alone can take days of resumed runs, since the index often times out). |
+| `--ats NAME` | Only `greenhouse` or `ashby` (repeatable). Default: both. |
+| `--limit N` | Stop after N finished queries in this run, across all crawls. |
+| `--retry-pause S` | Seconds to wait before retrying failed queries (default 300). |
 
 The index can cut a response short while still answering 200, so discovery uses small
 per-character queries, reads each until two reads agree, and splits a prefix whose reads
-never settle. Each finished query is saved at once, so a stopped run resumes where it left
-off. A failed query is recorded and retried later, and 5 failures in a row stop the run.
+never settle. Each finished query is saved at once, so a stopped or interrupted run (Ctrl+C)
+resumes where it left off. A failed query is recorded and retried later, and 5 failures in a
+row stop the run.
+
+At the end, it checks boards known to exist (Ashby `onebrief`, Greenhouse `anthropic`):
+`found`, `not checked yet` (the queries that would find it haven't been confirmed), or
+`missing`, which means discovery is losing boards and the command exits with an error.
 
 ## Limitations
 

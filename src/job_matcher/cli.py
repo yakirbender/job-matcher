@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 from pydantic import ValidationError
 from rich.console import Console
@@ -23,6 +24,7 @@ from job_matcher.cv import (
     load_cv,
     load_vocabulary,
 )
+from job_matcher.discovery import BOARD_HOSTS, CdxClient, CdxError
 from job_matcher.profile import DEFAULT_PROFILE_PATH, load_profile
 from job_matcher.scoring import KeywordScorer
 from job_matcher.sources import SourceAuthError, SourceError, build_source
@@ -430,6 +432,80 @@ def show(job_id: int) -> None:
     for t in tags:
         table.add_row(t["name"], t["value"], escape(t["evidence"] or ""))
     console.print(table)
+
+
+def _index_client() -> CdxClient:
+    """The real index client. A function so tests can swap in a fake."""
+    http = httpx.Client(
+        headers={"User-Agent": "job-matcher/0.1 (personal job search)"}, timeout=120.0
+    )
+    return CdxClient(http)
+
+
+@app.command()
+def discover(
+    crawls: Annotated[
+        int, typer.Option(min=1, help="How many of the newest crawls to read.")
+    ] = 1,
+    ats: Annotated[
+        list[str] | None,
+        typer.Option(help="Only these systems (repeatable): greenhouse, ashby. Default: both."),
+    ] = None,
+    limit: Annotated[
+        int | None, typer.Option(min=1, help="Stop after this many finished queries.")
+    ] = None,
+    retry_pause: Annotated[
+        float, typer.Option(min=0, help="Seconds to wait before retrying failed queries.")
+    ] = 300.0,
+) -> None:
+    """Find Greenhouse and Ashby job boards in Common Crawl's index. Free, but slow: a
+    full run can take hours. Progress is saved after every query, so a stopped run
+    resumes where it left off."""
+    systems = set(BOARD_HOSTS.values())
+    unknown = sorted(set(ats or ()) - systems)
+    if unknown:
+        console.print(f"[red]Unknown system:[/red] {', '.join(unknown)} "
+                      f"(choose from {', '.join(sorted(systems))})")
+        raise typer.Exit(2)
+    hosts = [host for host, system in BOARD_HOSTS.items() if not ats or system in ats]
+
+    def show_query(crawl: str, pattern: str, status: str, detail: str) -> None:
+        colour = {"confirmed": "green", "unconfirmed": "yellow", "failed": "red"}[status]
+        console.print(f"{crawl}  {pattern:<32} [{colour}]{status}[/{colour}]  {escape(detail)}")
+
+    client = _index_client()
+    conn = db.connect(Settings.from_env().db_path)
+    try:
+        boards_before = db.board_count(conn)
+        chosen = client.crawls(crawls)
+        console.print(f"Reading {', '.join(c.id for c in chosen)} for {', '.join(hosts)}.")
+        results = pipeline.discover(conn, client, chosen, hosts, limit=limit,
+                                    retry_pause=retry_pause, on_query=show_query)
+    except CdxError as exc:
+        console.print(f"[red]Index error:[/red] {escape(str(exc))}")
+        raise typer.Exit(1) from None
+    except KeyboardInterrupt:
+        console.print("[yellow]Interrupted.[/yellow] Finished queries are saved; "
+                      "run the command again to resume.")
+        raise typer.Exit(130) from None
+    else:
+        known = pipeline.check_known_boards(conn)
+        total = db.board_count(conn)
+    finally:
+        conn.close()
+
+    table = Table("Crawl", "Finished", "Still failing", "Stopped", title="Discovery")
+    for crawl, report in results:
+        table.add_row(crawl.id, str(report.finished), str(len(report.failed)),
+                      report.stopped_reason or "-")
+    console.print(table)
+    console.print(f"{total} boards saved, {total - boards_before} new in this run.")
+    for board, outcome in known.items():
+        colour = {"found": "green", "missing": "red"}.get(outcome, "yellow")
+        console.print(f"Known board {board.ats}:{board.token}  [{colour}]{outcome}[/{colour}]")
+    if "missing" in known.values():
+        console.print("[red]A known board is missing:[/red] discovery is losing boards.")
+        raise typer.Exit(1)
 
 
 @app.command()

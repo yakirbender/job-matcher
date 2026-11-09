@@ -133,6 +133,27 @@ def latest_indexes(collinfo: list[dict[str, Any]], count: int) -> list[str]:
     return result
 
 
+COLLINFO_URL = "https://index.commoncrawl.org/collinfo.json"
+
+
+@dataclass(frozen=True)
+class Crawl:
+    """One crawl: its name, which progress is saved under, and its index address."""
+
+    id: str
+    cdx_api: str
+
+
+def latest_crawls(collinfo: list[dict[str, Any]], count: int) -> list[Crawl]:
+    """Like latest_indexes, but keeping each crawl's id with its address."""
+    return [Crawl(item["id"], item["cdx-api"]) for item in collinfo[:count]]
+
+
+# Boards known to exist. Once the queries that should find them are confirmed, a missing
+# one means discovery is losing boards.
+KNOWN_BOARDS = (BoardRef("ashby", "onebrief"), BoardRef("greenhouse", "anthropic"))
+
+
 class CdxClient:
     """Reads the Common Crawl index politely: one request at a time, with pauses.
 
@@ -193,6 +214,14 @@ class CdxClient:
             return int(response.json()["pages"])
         except (ValueError, KeyError, TypeError) as exc:
             raise CdxError(f"unreadable page count: {response.text[:100]!r}") from exc
+
+    def crawls(self, count: int) -> list[Crawl]:
+        """The `count` newest crawls."""
+        response = self._get(COLLINFO_URL, {})
+        try:
+            return latest_crawls(response.json(), count)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise CdxError(f"unreadable crawl list: {response.text[:100]!r}") from exc
 
     def pages(self, cdx_api: str, url_pattern: str) -> Iterator[list[str]]:
         """Yield each page's lines in turn, ready for boards_from_cdx_lines.

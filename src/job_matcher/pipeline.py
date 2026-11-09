@@ -9,7 +9,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from job_matcher import db
-from job_matcher.discovery import CdxClient, CdxError, pending_patterns, read_until_stable
+from job_matcher.discovery import (
+    BOARD_HOSTS,
+    KNOWN_BOARDS,
+    BoardRef,
+    CdxClient,
+    CdxError,
+    Crawl,
+    pending_patterns,
+    read_until_stable,
+)
 from job_matcher.filters import evaluate
 from job_matcher.location import infer_work_mode, metro_for
 from job_matcher.models import Job, SearchSpec
@@ -128,6 +137,10 @@ class DiscoveryReport:
     stopped_reason: str | None = None
 
 
+# Called with the crawl, the pattern, its status, and a detail (boards found or the error).
+QueryCallback = Callable[[str, str, str, str], None]
+
+
 def discover_crawl(
     conn: sqlite3.Connection,
     client: CdxClient,
@@ -142,12 +155,14 @@ def discover_crawl(
     retry_pause: float = 300.0,
     limit: int | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    on_query: QueryCallback | None = None,
 ) -> DiscoveryReport:
     """Read one crawl's index for job boards, saving each query as it finishes.
 
     Finished queries are skipped, so rerunning resumes. A failed query is recorded and
     retried after the others, up to `max_attempts` times per run. Too many failures in a
-    row stops the run, since pressing on risks a block from the index.
+    row stops the run, since pressing on risks a block from the index. `on_query` hears
+    about each query as it ends.
     """
     report = DiscoveryReport()
     boards_before = db.board_count(conn)
@@ -173,6 +188,8 @@ def discover_crawl(
                 result = read_until_stable(client, cdx_api, pattern, max_reads=max_reads)
             except CdxError as exc:
                 db.save_query_failure(conn, crawl, pattern, str(exc))
+                if on_query:
+                    on_query(crawl, pattern, "failed", str(exc))
                 any_failed = True
                 failures_in_a_row += 1
                 if failures_in_a_row >= stop_after_failures:
@@ -182,6 +199,9 @@ def discover_crawl(
             failures_in_a_row = 0
             db.save_query_result(conn, crawl, result)
             report.finished += 1
+            if on_query:
+                status = "confirmed" if result.confirmed else "unconfirmed"
+                on_query(crawl, pattern, status, f"{len(result.boards)} boards")
         if any_failed and report.stopped_reason is None and to_do():
             sleep(retry_pause)
 
@@ -189,6 +209,53 @@ def discover_crawl(
     report.failed = sorted(p for p, r in db.discovery_queries(conn, crawl).items()
                            if r["status"] == "failed")
     return report
+
+
+def discover(
+    conn: sqlite3.Connection,
+    client: CdxClient,
+    crawls: list[Crawl],
+    hosts: list[str],
+    *,
+    limit: int | None = None,
+    **options,
+) -> list[tuple[Crawl, DiscoveryReport]]:
+    """Read each crawl in turn. `limit` counts queries across all of them, and a crawl
+    that stops early ends the run: the query limit is used up, or the index is failing.
+    Other options go to discover_crawl."""
+    results: list[tuple[Crawl, DiscoveryReport]] = []
+    for crawl in crawls:
+        remaining = None if limit is None else limit - sum(r.finished for _, r in results)
+        report = discover_crawl(conn, client, crawl.id, crawl.cdx_api, hosts,
+                                limit=remaining, **options)
+        results.append((crawl, report))
+        if report.stopped_reason:
+            break
+    return results
+
+
+def check_known_boards(
+    conn: sqlite3.Connection, known: tuple[BoardRef, ...] | list[BoardRef] = KNOWN_BOARDS
+) -> dict[BoardRef, str]:
+    """For each known board: "found", "missing", or "not checked yet".
+
+    A board is missing only when, on every host of its system, a confirmed query (in any
+    crawl) covers its name and still didn't find it. Until then it's not checked yet.
+    """
+    confirmed = db.confirmed_prefixes(conn)
+    saved = db.saved_boards(conn)
+    result = {}
+    for board in known:
+        if board in saved:
+            result[board] = "found"
+            continue
+        hosts = [host for host, ats in BOARD_HOSTS.items() if ats == board.ats]
+        covered = all(
+            any(board.token.startswith(prefix) for prefix in confirmed.get(host, ()))
+            for host in hosts
+        )
+        result[board] = "missing" if covered else "not checked yet"
+    return result
 
 
 @dataclass
