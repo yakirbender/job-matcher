@@ -1,0 +1,339 @@
+{
+ "jobs": [
+  {
+   "id": "00000000-0000-4000-8000-000000000001",
+   "title": "Financial Planning Manager",
+   "department": "Finance",
+   "team": "Finance",
+   "employmentType": "FullTime",
+   "location": "United States | Remote",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [],
+   "publishedAt": "2026-09-15T20:47:13.209+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Remote",
+   "address": {
+    "postalAddress": {
+     "addressCountry": "United States"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000001",
+   "applyUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000001/application",
+   "descriptionHtml": "<h2><strong>About Example Corp</strong></h2><p>Example Corp builds scheduling software for small clinics.</p><p>As our Financial Planning Manager, you will work with a small team across the company.</p>",
+   "descriptionPlain": "ABOUT EXAMPLE CORP\n\nExample Corp builds scheduling software for small clinics.\n\nAs our Financial Planning Manager, you will work with a small team across the company.",
+   "compensation": {
+    "compensationTierSummary": "$95K – $120K • Offers Equity",
+    "scrapeableCompensationSalarySummary": "$95K - $120K",
+    "compensationTiers": [
+     {
+      "id": "00000000-0000-4000-8000-000000000110",
+      "tierSummary": "$95K – $120K • Offers Equity",
+      "title": null,
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "00000000-0000-4000-8000-000000000510",
+        "summary": "$95K – $120K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": 95000,
+        "maxValue": 120000
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000511",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": 95000,
+      "maxValue": 120000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000002",
+   "title": "Account Manager",
+   "department": "Sales",
+   "team": "Sales",
+   "employmentType": "FullTime",
+   "location": "Norfolk, VA",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [],
+   "publishedAt": "2026-11-02T12:48:59.430+00:00",
+   "isListed": true,
+   "isRemote": false,
+   "workplaceType": "OnSite",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "Virginia",
+     "addressCountry": "United States",
+     "addressLocality": "Norfolk"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000002",
+   "applyUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000002/application",
+   "descriptionHtml": "<h2><strong>About Example Corp</strong></h2><p>Example Corp builds scheduling software for small clinics.</p><p>As our Account Manager, you will work with a small team across the company.</p>",
+   "descriptionPlain": "ABOUT EXAMPLE CORP\n\nExample Corp builds scheduling software for small clinics.\n\nAs our Account Manager, you will work with a small team across the company.",
+   "compensation": {
+    "compensationTierSummary": "$80K – $100K • Offers Equity",
+    "scrapeableCompensationSalarySummary": "$80K - $100K",
+    "compensationTiers": [
+     {
+      "id": "00000000-0000-4000-8000-000000000120",
+      "tierSummary": "$80K – $100K • Offers Equity",
+      "title": null,
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "00000000-0000-4000-8000-000000000520",
+        "summary": "$80K – $100K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": 80000,
+        "maxValue": 100000
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000521",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": 80000,
+      "maxValue": 100000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000003",
+   "title": "Customer Success Manager",
+   "department": "Customer Success",
+   "team": "Customer Success",
+   "employmentType": "FullTime",
+   "location": "Berlin, Germany",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [],
+   "publishedAt": "2026-09-28T14:15:23.763+00:00",
+   "isListed": true,
+   "isRemote": false,
+   "workplaceType": "OnSite",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "Berlin",
+     "addressCountry": "Germany",
+     "addressLocality": "Berlin"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000003",
+   "applyUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000003/application",
+   "descriptionHtml": "<h2><strong>About Example Corp</strong></h2><p>Example Corp builds scheduling software for small clinics.</p><p>As our Customer Success Manager, you will work with a small team across the company.</p>",
+   "descriptionPlain": "ABOUT EXAMPLE CORP\n\nExample Corp builds scheduling software for small clinics.\n\nAs our Customer Success Manager, you will work with a small team across the company.",
+   "compensation": {
+    "compensationTierSummary": "$80K – $100K • Offers Equity",
+    "scrapeableCompensationSalarySummary": "$80K - $100K",
+    "compensationTiers": [
+     {
+      "id": "00000000-0000-4000-8000-000000000130",
+      "tierSummary": "$80K – $100K • Offers Equity",
+      "title": null,
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "00000000-0000-4000-8000-000000000530",
+        "summary": "$80K – $100K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": 80000,
+        "maxValue": 100000
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000531",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000532",
+        "summary": "Offers Bonus",
+        "compensationType": "Bonus",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": 80000,
+      "maxValue": 100000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     },
+     {
+      "compensationType": "Bonus",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000004",
+   "title": "Delivery Manager",
+   "department": "Delivery",
+   "team": "Delivery",
+   "employmentType": "FullTime",
+   "location": "Washington, D.C.",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [
+    {
+     "location": "Arlington, VA",
+     "address": {
+      "postalAddress": {
+       "postalCode": "22201",
+       "addressRegion": "Virginia",
+       "addressCountry": "USA",
+       "addressLocality": "Arlington"
+      }
+     }
+    }
+   ],
+   "publishedAt": "2026-09-21T14:38:34.061+00:00",
+   "isListed": true,
+   "isRemote": false,
+   "workplaceType": "OnSite",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "District of Columbia",
+     "addressCountry": "United States",
+     "addressLocality": "Washington D.C."
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000004",
+   "applyUrl": "https://jobs.ashbyhq.com/examplecorp/00000000-0000-4000-8000-000000000004/application",
+   "descriptionHtml": "<h2><strong>About Example Corp</strong></h2><p>Example Corp builds scheduling software for small clinics.</p><p>As our Delivery Manager, you will work with a small team across the company.</p>",
+   "descriptionPlain": "ABOUT EXAMPLE CORP\n\nExample Corp builds scheduling software for small clinics.\n\nAs our Delivery Manager, you will work with a small team across the company.",
+   "compensation": {
+    "compensationTierSummary": "$85K – $110K • Offers Equity",
+    "scrapeableCompensationSalarySummary": "$85K - $110K",
+    "compensationTiers": [
+     {
+      "id": "00000000-0000-4000-8000-000000000140",
+      "tierSummary": "$85K – $110K • Offers Equity",
+      "title": null,
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "00000000-0000-4000-8000-000000000540",
+        "summary": "$85K – $110K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": 85000,
+        "maxValue": 110000
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000541",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000542",
+        "summary": "Offers Bonus",
+        "compensationType": "Bonus",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": 85000,
+      "maxValue": 110000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     },
+     {
+      "compensationType": "Bonus",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  }
+ ],
+ "apiVersion": "1"
+}

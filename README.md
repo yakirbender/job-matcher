@@ -1,8 +1,9 @@
 # job-matcher
 
-Pulls software job postings (English and French searches) for Montreal, Florida, and remote
-Canada/US roles into SQLite, tags and filters them against a bilingual profile, and scores
-the survivors against your CV with a free, local keyword scorer.
+Pulls software job postings (English and French searches, plus companies' own job boards)
+for Montreal, Ottawa, Toronto, Florida, Texas, and remote Canada/US roles into SQLite, tags
+and filters them against a bilingual profile, and scores the survivors against your CV with
+a free, local keyword scorer.
 
 ## Costs
 
@@ -10,6 +11,7 @@ the survivors against your CV with a free, local keyword scorer.
 |---|---|
 | Filtering, tagging, scoring (everything local) | Free |
 | Board discovery (Common Crawl index) | Free |
+| Company boards (Ashby, Greenhouse APIs) | Free, no key |
 | Adzuna, trial key | Free, 25 calls total |
 | Adzuna, regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
 | LLM scoring (optional, not built) | A local model via Ollama is free; the Claude API needs prepaid credits |
@@ -79,8 +81,10 @@ with nothing new.
 
 ## How results are labeled
 
-- **Metro**: `montreal` (including Laval, Longueuil, and other nearby cities), `orlando`,
-  `tampa`, `miami`, or `florida_other`, from Adzuna's country › state › county › city data.
+- **Metro**: `montreal` (including Laval, Longueuil, and other nearby cities), `ottawa`
+  (including Gatineau), `toronto` (the GTA); `orlando`, `tampa`, `miami`, or `florida_other`;
+  `austin`, `dallas` (Dallas–Fort Worth), `houston`, `san_antonio`, or `texas_other`. Read
+  from the source's country › state › county › city data, or its location text.
 - **Work mode**: `remote`, `hybrid`, `onsite`, or unknown, read from the title and snippet in
   English and French. Unknown means the snippet doesn't say, not that the job is on-site.
 - **Likely duplicates**: same title, company, and city are flagged with `duplicate_of`,
@@ -152,7 +156,8 @@ Scores are 0-100, rebuilt on every run, and explained line by line in `jm show <
 - **Level (10-30):** entry-level title 30, 0-1 years 26, entry-level wording 22, 2 years 20,
   unstated 15, stretch title ("II") 10.
 - **Adjustments** (`ranking` in the profile config): French required +8 / asset +4,
-  a bonus per metro, clearance (obtainable 0, unclear -5, active -15,
+  a bonus per metro, remote -3 (a much larger applicant pool, so remote roles rank slightly
+  below the same role in a target area), clearance (obtainable 0, unclear -5, active -15,
   polygraph -5 more), suspicious -15. Role families are not boosted; related experience from
   your CV (e.g. tutoring for training roles) is shown but not scored.
 
@@ -187,7 +192,7 @@ LLM or API scorer replace the keyword scorer later.
 `jm discover` finds Greenhouse and Ashby job boards in Common Crawl's URL index, so the
 tool can read companies' public board APIs without a hand-kept company list. It's free, but
 slow: the index is heavily rate-limited and often times out, so a full run can take hours.
-Boards are saved to the database, but nothing reads their jobs yet. Lever's robots.txt
+Boards are saved to the database for `jm fetch-boards` to read. Lever's robots.txt
 blocks Common Crawl's crawler, so Lever boards can't be discovered this way.
 
 ```bash
@@ -212,10 +217,49 @@ At the end, it checks boards known to exist (Ashby `onebrief`, Greenhouse `anthr
 `found`, `not checked yet` (the queries that would find it haven't been confirmed), or
 `missing`, which means discovery is losing boards and the command exits with an error.
 
+## Company boards (`jm fetch-boards`)
+
+Reads every discovered board through the public Ashby and Greenhouse job-board APIs (free,
+no key) and stores the jobs worth keeping, with their **full descriptions**. Then run
+`jm filter` and `jm score` as usual.
+
+```bash
+uv run jm fetch-boards --limit 20          # a small first run
+uv run jm fetch-boards --ats ashby         # one system only
+uv run jm fetch-boards                     # every board that's due
+```
+
+| Option | Effect |
+|---|---|
+| `--ats NAME` | Only `greenhouse` or `ashby` (repeatable). Default: both. |
+| `--limit N` | Stop after reading N boards. |
+| `--refresh-days D` | Read a board again once D days have passed (default 7). |
+| `-p, --profile` | The profile whose role families and metros decide what's kept. |
+
+A board lists every job a company has, worldwide, so jobs are kept only with a
+software-related title (any role family in the profile) **and** either a target metro or
+remote work in the US, Canada, or an unstated country. Everything else is counted, not
+stored; the full filters still run later in `jm filter`. On Greenhouse, descriptions are
+downloaded only for kept jobs: a large board's descriptions can reach 10 MB, its plain job
+list under 500 KB.
+
+Locations are free text ("Orlando, FL", "Ontario, CAN", "Remote-Friendly, United States",
+or several places in one string), read by `places.py` into the same country › state › city
+shape Adzuna uses. A job with several places is filed under the most relevant: a target
+metro first, then remote in the US or Canada. Ashby states each job's work mode; Greenhouse
+only says "remote" in its location text (its "Location Type" field is defined by each
+company and proved unreliable), so otherwise the mode is read from the description.
+
+Boards are read never-fetched first, then stalest first, with a pause before every request.
+Each board's result is saved as it finishes, so a stopped run resumes. A board that no
+longer exists (404, common for older crawl entries) is never tried again; one that failed
+is tried on the next run, and 5 failures in a row stop the run.
+
 ## Limitations
 
 - Adzuna returns only a ~500-character description snippet ending in "…". Requirements
-  and work mode stated later in a posting are invisible here.
+  and work mode stated later in a posting are invisible here. Company boards don't have
+  this limit.
 - Search terms match job titles by default (`title_only: true`). With `--full-text`,
   Adzuna matches words anywhere in the full posting, which we can't see: "junior developer"
   in Orlando returned 28 jobs, only 1 of them junior. Title-only returned just that one.

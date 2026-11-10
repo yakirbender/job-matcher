@@ -56,6 +56,7 @@ class Ranking(BaseModel):
     french_required: int = 8
     french_asset: int = 4
     metro: dict[str, int] = {}
+    remote: int = 0
     clearance: ClearancePoints = ClearancePoints()
     suspicious: int = -15
     relevant_experience: dict[str, list[str]] = {}

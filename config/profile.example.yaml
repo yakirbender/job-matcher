@@ -174,7 +174,8 @@ exclude:
 locations:
   # Jobs in these metros pass whatever their work mode. Elsewhere, only remote jobs pass
   # (or jobs whose work mode the snippet doesn't state, flagged for review).
-  metros: [montreal, orlando, tampa, miami, florida_other]
+  metros: [montreal, ottawa, toronto, orlando, tampa, miami, florida_other,
+           austin, dallas, houston, san_antonio, texas_other]
 
 salary:
   # Minimum acceptable salary by currency, e.g. {CAD: 55000, USD: 60000}.
@@ -202,12 +203,16 @@ ranking:
   # French-required roles get a boost.
   french_required: 8
   french_asset: 4
-  # Location preference. Unlisted metros and remote roles get 0.
+  # Location preference. Unlisted metros get 0.
   metro:
     orlando: 3
     tampa: 3
     miami: 3
     montreal: 3
+  # Remote roles draw a much larger applicant pool, so they rank slightly below
+  # the same role in a target area (a remote job listed in a metro keeps that
+  # metro's points, less these).
+  remote: -3
   # "Ability to obtain" costs nothing. An already-active clearance is rare for new grads,
   # so those roles rank lower but stay visible.
   clearance:

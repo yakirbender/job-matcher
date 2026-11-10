@@ -151,6 +151,15 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (crawl, pattern)
     );
     """,
+    """
+    -- The last time each board's jobs were fetched. fetch_status is ok, gone (HTTP 404:
+    -- never tried again), or error (tried again on the next run).
+    ALTER TABLE boards ADD COLUMN last_fetched TEXT;
+    ALTER TABLE boards ADD COLUMN fetch_status TEXT;
+    ALTER TABLE boards ADD COLUMN fetch_error TEXT;
+    ALTER TABLE boards ADD COLUMN jobs_listed INTEGER;
+    ALTER TABLE boards ADD COLUMN jobs_kept INTEGER;
+    """,
 ]
 
 # Columns written from a Job on every insert or content update.
@@ -624,6 +633,46 @@ def board_count(conn: sqlite3.Connection) -> int:
 
 def saved_boards(conn: sqlite3.Connection) -> set[BoardRef]:
     return {BoardRef(r["ats"], r["token"]) for r in conn.execute("SELECT ats, token FROM boards")}
+
+
+def boards_to_fetch(
+    conn: sqlite3.Connection, systems: list[str], fetched_before: str
+) -> list[tuple[str, str]]:
+    """(ats, token) of boards due a fetch: never fetched or failed last time first, then
+    those last fetched before `fetched_before`, oldest first. Gone boards never return."""
+    marks = ", ".join("?" for _ in systems)
+    rows = conn.execute(
+        f"""
+        SELECT ats, token FROM boards
+        WHERE ats IN ({marks})
+          AND (fetch_status IS NULL OR fetch_status = 'error'
+               OR (fetch_status = 'ok' AND last_fetched < ?))
+        ORDER BY fetch_status IS NOT NULL AND fetch_status != 'error', last_fetched, ats, token
+        """,
+        (*systems, fetched_before),
+    ).fetchall()
+    return [(r["ats"], r["token"]) for r in rows]
+
+
+def save_board_fetch(
+    conn: sqlite3.Connection,
+    ats: str,
+    token: str,
+    status: str,
+    *,
+    listed: int | None = None,
+    kept: int | None = None,
+    error: str | None = None,
+    now: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        UPDATE boards SET last_fetched = ?, fetch_status = ?, fetch_error = ?,
+            jobs_listed = ?, jobs_kept = ?
+        WHERE ats = ? AND token = ?
+        """,
+        (now or utcnow(), status, error, listed, kept, ats, token),
+    )
 
 
 def confirmed_prefixes(conn: sqlite3.Connection) -> dict[str, set[str]]:

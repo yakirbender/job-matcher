@@ -51,7 +51,7 @@ def test_screened_jobs_can_be_split_by_employment(conn):
 
 def test_screening_refreshes_stale_work_mode(conn):
     job = make_job("1", title="Software Engineer I (Onsite)", metro=None,
-                   location_area=["US", "Texas", "Dallas"])
+                   location_area=["US", "Ohio", "Columbus"])
     result = db.upsert_job(conn, job)  # stored without enrich(): work_mode is None
     conn.commit()
     pipeline.screen(conn, PROFILE)

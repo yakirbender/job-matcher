@@ -157,3 +157,23 @@ def test_level_wording_for_stated_years():
                             description="0-2 years of experience."))
     assert result.components["level"] == 26
     assert "asks for 0+ years of experience" in result.explanation[1]
+
+
+def test_remote_ranks_slightly_below_the_same_job_on_site():
+    text = "Spring Boot, SQL and REST APIs. Fully remote."
+    remote = score(make_job(title="Junior Java Developer", metro=None, work_mode="remote",
+                            description=text))
+    on_site = score(make_job(title="Junior Java Developer", metro="toronto", work_mode="onsite",
+                             description=text))
+    assert remote.components["remote"] == PROFILE.ranking.remote < 0
+    assert "remote" not in on_site.components
+    assert remote.score < on_site.score
+    assert any(line.startswith("Remote:") for line in remote.explanation)
+
+
+def test_a_remote_job_in_a_metro_keeps_the_bonus_less_the_remote_points():
+    job = make_job(title="Junior Java Developer", metro="orlando", work_mode="remote",
+                   description="Spring Boot, SQL and REST APIs.")
+    result = score(job)
+    assert result.components["location"] == PROFILE.ranking.metro["orlando"]
+    assert result.components["remote"] == PROFILE.ranking.remote

@@ -1,0 +1,82 @@
+{
+ "absolute_url": "https://job-boards.greenhouse.io/examplelabs/jobs/1000001",
+ "data_compliance": [
+  {
+   "type": "gdpr",
+   "requires_consent": false,
+   "requires_processing_consent": false,
+   "requires_retention_consent": false,
+   "retention_period": null,
+   "demographic_data_consent_applies": false
+  }
+ ],
+ "internal_job_id": 2000001,
+ "location": {
+  "name": "London, UK; Ontario, CAN; Remote-Friendly, United States; San Francisco, CA"
+ },
+ "metadata": [
+  {
+   "id": 3000001,
+   "name": "Location Type",
+   "value": "On-Site",
+   "value_type": "single_select"
+  }
+ ],
+ "id": 1000001,
+ "updated_at": "2026-11-04T16:27:48-05:00",
+ "requisition_id": "REQ-0001",
+ "title": "Research Fellow, Safety",
+ "company_name": "Example Labs",
+ "first_published": "2026-04-09T20:28:23-04:00",
+ "language": "en",
+ "application_deadline": null,
+ "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;h2&gt;&lt;strong&gt;About Example Labs&lt;/strong&gt;&lt;/h2&gt;\n&lt;p&gt;Example Labs&amp;rsquo; mission is to build reliable tools for researchers.&lt;/p&gt;&lt;/div&gt;\n&lt;h2&gt;About the role&lt;/h2&gt;\n&lt;ul&gt;&lt;li&gt;Run experiments&lt;/li&gt;&lt;li&gt;Write up results&lt;/li&gt;&lt;/ul&gt;",
+ "departments": [
+  {
+   "id": 4000001,
+   "name": "Research",
+   "child_ids": [],
+   "parent_id": null
+  }
+ ],
+ "offices": [
+  {
+   "id": 5000001,
+   "name": "British Columbia, CA",
+   "location": "British Columbia, Canada",
+   "child_ids": [],
+   "parent_id": null
+  },
+  {
+   "id": 5000002,
+   "name": "London, UK",
+   "location": "London, England, United Kingdom",
+   "child_ids": [],
+   "parent_id": null
+  },
+  {
+   "id": 5000003,
+   "name": "Ontario, CA",
+   "location": "Ontario, Canada",
+   "child_ids": [],
+   "parent_id": null
+  },
+  {
+   "id": 5000004,
+   "name": "Remote-Friendly US (Travel Required)",
+   "location": null,
+   "child_ids": [],
+   "parent_id": null
+  },
+  {
+   "id": 5000005,
+   "name": "San Francisco, CA",
+   "location": "San Francisco, California, United States",
+   "child_ids": [],
+   "parent_id": null
+  }
+ ],
+ "ai_disclaimer": null,
+ "include_ai_disclaimer": null,
+ "ai_opt_out_request_url": null
+}

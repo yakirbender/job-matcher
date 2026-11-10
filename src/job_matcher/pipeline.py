@@ -7,6 +7,8 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol
 
 from job_matcher import db
 from job_matcher.discovery import (
@@ -25,8 +27,9 @@ from job_matcher.models import Job, SearchSpec
 from job_matcher.profile import Profile
 from job_matcher.scoring.base import Scorer
 from job_matcher.sources.base import JobSource, SourceAuthError, SourceError, SourceQuotaError
+from job_matcher.sources.boards import BoardError, BoardGone, stated_work_mode
 from job_matcher.suspicion import mass_template_tags, scam_phrase_tag
-from job_matcher.tagging import tag_job
+from job_matcher.tagging import role_family, tag_job
 
 
 @dataclass
@@ -47,7 +50,7 @@ class FetchReport:
 def enrich(job: Job) -> Job:
     """Fill in fields derived the same way for every source."""
     job.metro = metro_for(job.country, job.location_area, job.location_display)
-    job.work_mode = infer_work_mode(job.title, job.description)
+    job.work_mode = stated_work_mode(job) or infer_work_mode(job.title, job.description)
     return job
 
 
@@ -256,6 +259,139 @@ def check_known_boards(
         )
         result[board] = "missing" if covered else "not checked yet"
     return result
+
+
+def board_job_wanted(job: Job, profile: Profile) -> bool:
+    """Whether a job from a company board is worth storing: a software-related title (any
+    role family) in a target metro, or remote in the US, Canada, or an unstated country.
+
+    Boards list every job a company has, worldwide, so this runs before anything is saved
+    (and, on Greenhouse, before the description is downloaded). The full filters still run
+    later, in screen().
+    """
+    if role_family(job.title, profile.role_families) is None:
+        return False
+    enrich(job)
+    if job.metro in profile.locations.metros:
+        return True
+    return job.work_mode == "remote" and job.country in ("us", "ca", "")
+
+
+class BoardReader(Protocol):
+    ats: str
+    client: Any  # has requests_made
+
+    def list_jobs(self, token: str) -> list[Job]: ...
+    def complete(self, job: Job) -> Job: ...
+
+
+@dataclass
+class BoardFetchReport:
+    boards: int = 0  # boards read in this run
+    gone: int = 0
+    failed: list[str] = field(default_factory=list)  # "ats:token"
+    jobs_listed: int = 0
+    jobs_kept: int = 0
+    new: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    requests: int = 0
+    stopped_reason: str | None = None
+
+
+# Called after each board with "ats:token", its status, and a detail.
+BoardCallback = Callable[[str, str, str], None]
+
+
+def fetch_boards(
+    conn: sqlite3.Connection,
+    readers: dict[str, BoardReader],
+    profile: Profile,
+    *,
+    refresh_days: float = 7,
+    limit: int | None = None,
+    stop_after_failures: int = 5,
+    on_board: BoardCallback | None = None,
+) -> BoardFetchReport:
+    """Read each discovered board due a fetch, and save the jobs worth keeping.
+
+    Boards never fetched come first, then the stalest. Progress is saved per board, so a
+    stopped run resumes. A board that's gone (404) is never tried again; one that failed
+    is tried on the next run.
+    """
+    report = BoardFetchReport()
+    cutoff = (datetime.now(UTC) - timedelta(days=refresh_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    due = db.boards_to_fetch(conn, sorted(readers), cutoff)
+    # Readers may share one client: count each client once.
+    clients = list({id(reader.client): reader.client for reader in readers.values()}.values())
+    requests_before = [client.requests_made for client in clients]
+    run_id = db.start_run(conn, "boards")
+    failures_in_a_row = 0
+    status = "ok"
+    errors: list[str] = []
+
+    try:
+        for ats, token in due:
+            if limit is not None and report.boards >= limit:
+                report.stopped_reason = "reached the board limit"
+                break
+            reader = readers[ats]
+            name = f"{ats}:{token}"
+            report.boards += 1
+            try:
+                listed = reader.list_jobs(token)
+                kept = []
+                for job in (j for j in listed if board_job_wanted(j, profile)):
+                    try:
+                        kept.append(enrich(reader.complete(job)))
+                    except BoardGone:
+                        continue  # closed between the listing and now
+            except BoardGone:
+                db.save_board_fetch(conn, ats, token, "gone")
+                conn.commit()
+                report.gone += 1
+                if on_board:
+                    on_board(name, "gone", "no such board")
+                continue
+            except BoardError as exc:
+                db.save_board_fetch(conn, ats, token, "error", error=str(exc))
+                conn.commit()
+                report.failed.append(name)
+                errors.append(f"{name}: {exc}")
+                status = "partial"
+                if on_board:
+                    on_board(name, "error", str(exc))
+                failures_in_a_row += 1
+                if failures_in_a_row >= stop_after_failures:
+                    report.stopped_reason = f"{failures_in_a_row} failed boards in a row"
+                    break
+                continue
+
+            failures_in_a_row = 0
+            now = db.utcnow()
+            new = 0
+            for job in kept:
+                result = db.upsert_job(conn, job, now)
+                setattr(report, result.status, getattr(report, result.status) + 1)
+                new += result.status == "new"
+            db.save_board_fetch(conn, ats, token, "ok", listed=len(listed), kept=len(kept),
+                                now=now)
+            conn.commit()
+            report.jobs_listed += len(listed)
+            report.jobs_kept += len(kept)
+            if on_board:
+                on_board(name, "ok", f"{len(listed)} listed, {len(kept)} kept, {new} new")
+    except BaseException:
+        conn.rollback()
+        status = "failed"
+        raise
+    finally:
+        report.requests = sum(client.requests_made - before
+                              for client, before in zip(clients, requests_before, strict=True))
+        db.finish_run(conn, run_id, status=status, requests=report.requests, new=report.new,
+                      updated=report.updated, unchanged=report.unchanged, errors=errors,
+                      stopped_reason=report.stopped_reason)
+    return report
 
 
 @dataclass

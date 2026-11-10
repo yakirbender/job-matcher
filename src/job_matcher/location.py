@@ -32,6 +32,52 @@ FLORIDA_METROS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     ),
 }
 
+TEXAS_METROS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "austin": (
+        frozenset({"travis county", "williamson county", "hays county"}),
+        frozenset({
+            "austin", "round rock", "cedar park", "georgetown", "pflugerville", "san marcos",
+            "leander", "kyle", "lakeway",
+        }),
+    ),
+    "dallas": (
+        frozenset({"dallas county", "tarrant county", "collin county", "denton county"}),
+        frozenset({
+            "dallas", "fort worth", "plano", "irving", "arlington", "frisco", "mckinney",
+            "richardson", "garland", "denton", "addison", "carrollton", "allen",
+            "grand prairie", "lewisville", "southlake", "coppell", "flower mound",
+        }),
+    ),
+    "houston": (
+        frozenset({"harris county", "fort bend county", "montgomery county"}),
+        frozenset({
+            "houston", "sugar land", "the woodlands", "katy", "pearland", "pasadena", "spring",
+            "cypress", "conroe", "league city", "baytown", "missouri city",
+        }),
+    ),
+    "san_antonio": (
+        frozenset({"bexar county", "comal county"}),
+        frozenset({"san antonio", "new braunfels", "boerne", "schertz", "converse"}),
+    ),
+}
+
+# State -> (its metros, the bucket for the rest of the state).
+US_STATE_METROS = {
+    "florida": (FLORIDA_METROS, "florida_other"),
+    "texas": (TEXAS_METROS, "texas_other"),
+}
+
+OTTAWA_AREA = frozenset({
+    "ottawa", "gatineau", "kanata", "nepean", "orleans", "barrhaven", "gloucester",
+    "stittsville", "aylmer", "hull",
+})
+
+TORONTO_AREA = frozenset({
+    "toronto", "mississauga", "brampton", "markham", "vaughan", "richmond hill", "oakville",
+    "scarborough", "north york", "etobicoke", "pickering", "ajax", "burlington", "milton",
+    "oshawa", "whitby", "newmarket", "aurora", "concord", "thornhill", "woodbridge",
+})
+
 MONTREAL_AREA = frozenset({
     "montreal", "laval", "longueuil", "brossard", "dorval", "pointe claire", "saint laurent",
     "boucherville", "terrebonne", "kirkland", "mont royal", "verdun", "lasalle", "saint leonard",
@@ -43,22 +89,30 @@ MONTREAL_AREA = frozenset({
 
 
 def metro_for(country: str, area: Iterable[str], display: str | None = None) -> str | None:
-    """Bucket a posting into montreal / orlando / tampa / miami / florida_other, or None."""
+    """Bucket a posting into a target metro (montreal, ottawa, toronto; a Florida or Texas
+    metro, or florida_other / texas_other for the rest of the state), or None."""
     parts = {fold_key(p) for p in area}
     if display:
         parts |= {fold_key(p) for p in display.split(",")}
     parts.discard("")
 
     if country == "us":
-        if "florida" not in parts:
-            return None
-        for metro, (counties, cities) in FLORIDA_METROS.items():
-            if parts & counties or parts & cities:
-                return metro
-        return "florida_other"
+        for state, (metros, rest_of_state) in US_STATE_METROS.items():
+            if state not in parts:
+                continue
+            for metro, (counties, cities) in metros.items():
+                if parts & counties or parts & cities:
+                    return metro
+            return rest_of_state
+        return None
 
-    if country == "ca" and (parts & MONTREAL_AREA or any("montreal" in p for p in parts)):
-        return "montreal"
+    if country == "ca":
+        if parts & MONTREAL_AREA or any("montreal" in p for p in parts):
+            return "montreal"
+        if parts & OTTAWA_AREA:
+            return "ottawa"
+        if parts & TORONTO_AREA:
+            return "toronto"
     return None
 
 

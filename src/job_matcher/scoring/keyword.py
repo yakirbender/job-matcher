@@ -8,7 +8,8 @@ Base score (max 90):
                     10 points, since snippets often name only one or two.
   level   up to 30  entry-level title 30, entry-level wording 22, 0-1 years 26,
                     2 years 20, unstated 15, stretch title ("II") 10
-Adjustments: French, metro, clearance, suspicious (profile.example.yaml `ranking`). Clamped 0-100.
+Adjustments: French, metro, remote, clearance, suspicious (profile.example.yaml
+`ranking`). Clamped 0-100.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ def _signed(points: int) -> str:
 
 class KeywordScorer:
     name = "keyword"
-    version = "3"  # 2: evidence-weighted skills + related skills; 3: stated mid level
+    version = "4"  # 2: evidence-weighted skills + related skills; 3: stated mid level; 4: remote
 
     def __init__(self, cv: CvProfile, profile: Profile, vocabulary: Vocabulary) -> None:
         self.cv = cv
@@ -128,6 +129,12 @@ class KeywordScorer:
         if job.metro and (points := ranking.metro.get(job.metro, 0)):
             result.components["location"] = points
             result.explanation.append(f"Location: {job.metro} ({_signed(points)}).")
+
+        if job.work_mode == "remote" and ranking.remote:
+            result.components["remote"] = ranking.remote
+            result.explanation.append(
+                f"Remote: open to a larger applicant pool ({_signed(ranking.remote)})."
+            )
 
         clearance = _tag(tags, "clearance")
         if clearance:

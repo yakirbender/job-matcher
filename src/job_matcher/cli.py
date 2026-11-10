@@ -25,9 +25,11 @@ from job_matcher.cv import (
     load_vocabulary,
 )
 from job_matcher.discovery import BOARD_HOSTS, CdxClient, CdxError
+from job_matcher.pipeline import BoardReader
 from job_matcher.profile import DEFAULT_PROFILE_PATH, load_profile
 from job_matcher.scoring import KeywordScorer
 from job_matcher.sources import SourceAuthError, SourceError, build_source
+from job_matcher.sources.boards import READERS, BoardClient
 
 app = typer.Typer(no_args_is_help=True, help="Fetch, filter, and score software job postings.")
 console = Console(emoji=False)  # tag values like "secret:active" aren't emoji codes
@@ -506,6 +508,68 @@ def discover(
     if "missing" in known.values():
         console.print("[red]A known board is missing:[/red] discovery is losing boards.")
         raise typer.Exit(1)
+
+
+def _board_readers() -> dict[str, BoardReader]:
+    """The real board readers, sharing one polite client. A function so tests can swap it."""
+    http = httpx.Client(
+        headers={"User-Agent": "job-matcher/0.1 (personal job search)"}, timeout=60.0
+    )
+    client = BoardClient(http)
+    return {ats: reader(client) for ats, reader in READERS.items()}
+
+
+@app.command("fetch-boards")
+def fetch_boards(
+    ats: Annotated[
+        list[str] | None,
+        typer.Option(help="Only these systems (repeatable): greenhouse, ashby. Default: both."),
+    ] = None,
+    limit: Annotated[
+        int | None, typer.Option(min=1, help="Stop after reading this many boards.")
+    ] = None,
+    refresh_days: Annotated[
+        float, typer.Option(min=0, help="Read a board again once this many days have passed.")
+    ] = 7.0,
+    profile_path: ProfileOption = DEFAULT_PROFILE_PATH,
+) -> None:
+    """Read the discovered company boards and keep software jobs in the target places.
+    Free, no key. Progress is saved after every board, so a stopped run resumes."""
+    readers = _board_readers()
+    unknown = sorted(set(ats or ()) - set(readers))
+    if unknown:
+        console.print(f"[red]Unknown system:[/red] {', '.join(unknown)} "
+                      f"(choose from {', '.join(sorted(readers))})")
+        raise typer.Exit(2)
+    if ats:
+        readers = {name: reader for name, reader in readers.items() if name in ats}
+    profile = load_profile(profile_path)
+
+    def show_board(name: str, status: str, detail: str) -> None:
+        colour = {"ok": "green", "gone": "yellow", "error": "red"}[status]
+        console.print(f"{name:<40} [{colour}]{status}[/{colour}]  {escape(detail)}")
+
+    conn = db.connect(Settings.from_env().db_path)
+    try:
+        report = pipeline.fetch_boards(conn, readers, profile, refresh_days=refresh_days,
+                                       limit=limit, on_board=show_board)
+    except KeyboardInterrupt:
+        console.print("[yellow]Interrupted.[/yellow] Finished boards are saved; "
+                      "run the command again to resume.")
+        raise typer.Exit(130) from None
+    finally:
+        conn.close()
+
+    console.print(
+        f"{report.boards} boards read ({report.gone} gone, {len(report.failed)} failed), "
+        f"{report.requests} requests. {report.jobs_listed} jobs listed, "
+        f"{report.jobs_kept} kept: [green]{report.new} new[/green], {report.updated} updated, "
+        f"{report.unchanged} unchanged."
+    )
+    if report.stopped_reason:
+        console.print(f"[yellow]Stopped early:[/yellow] {report.stopped_reason}")
+    if report.new or report.updated:
+        console.print("Run [bold]jm filter[/bold] and [bold]jm score[/bold] to rank them.")
 
 
 @app.command()
