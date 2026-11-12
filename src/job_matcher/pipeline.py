@@ -297,6 +297,7 @@ class BoardFetchReport:
     new: int = 0
     updated: int = 0
     unchanged: int = 0
+    closed: int = 0  # stored jobs no longer on their board
     requests: int = 0
     stopped_reason: str | None = None
 
@@ -319,7 +320,8 @@ def fetch_boards(
 
     Boards never fetched come first, then the stalest. Progress is saved per board, so a
     stopped run resumes. A board that's gone (404) is never tried again; one that failed
-    is tried on the next run.
+    is tried on the next run. Stored jobs a board no longer lists are marked closed (all of
+    them when the board is gone); a closed job that reappears is reopened.
     """
     report = BoardFetchReport()
     cutoff = (datetime.now(UTC) - timedelta(days=refresh_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -350,6 +352,7 @@ def fetch_boards(
                         continue  # closed between the listing and now
             except BoardGone:
                 db.save_board_fetch(conn, ats, token, "gone")
+                report.closed += db.sync_board_jobs(conn, ats, token, set())
                 conn.commit()
                 report.gone += 1
                 if on_board:
@@ -376,13 +379,17 @@ def fetch_boards(
                 result = db.upsert_job(conn, job, now)
                 setattr(report, result.status, getattr(report, result.status) + 1)
                 new += result.status == "new"
+            closed = db.sync_board_jobs(conn, ats, token,
+                                        {job.source_id for job in listed}, now)
+            report.closed += closed
             db.save_board_fetch(conn, ats, token, "ok", listed=len(listed), kept=len(kept),
                                 now=now)
             conn.commit()
             report.jobs_listed += len(listed)
             report.jobs_kept += len(kept)
             if on_board:
-                on_board(name, "ok", f"{len(listed)} listed, {len(kept)} kept, {new} new")
+                on_board(name, "ok", f"{len(listed)} listed, {len(kept)} kept, {new} new"
+                         + (f", {closed} closed" if closed else ""))
     except BaseException:
         conn.rollback()
         status = "failed"

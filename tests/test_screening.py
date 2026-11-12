@@ -120,3 +120,29 @@ def test_list_links_prints_each_jobs_full_link(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert long_url in result.output  # whole, on one line
     assert "Junior Developer" in result.output
+
+
+def test_list_hides_closed_and_stale_jobs(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from job_matcher import cli
+
+    path = tmp_path / "jobs.db"
+    conn = db.connect(path)
+    db.upsert_job(conn, pipeline.enrich(make_job("1", title="Junior Developer Open")))
+    db.upsert_job(conn, pipeline.enrich(make_job("2", title="Junior Developer Stale")),
+                  now="2026-01-01T00:00:00+00:00")
+    closed = db.upsert_job(conn, pipeline.enrich(make_job("3", title="Junior Developer Closed")))
+    conn.execute("UPDATE jobs SET closed_at = '2026-11-01' WHERE id = ?", (closed.job_id,))
+    conn.commit()
+    pipeline.screen(conn, PROFILE)
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("JM_DB_PATH", str(path))
+
+    shown = CliRunner().invoke(cli.app, ["list"]).output
+    assert "Open" in shown and "Stale" not in shown and "Closed" not in shown
+    assert "2 closed or stale jobs hidden" in shown
+
+    everything = CliRunner().invoke(cli.app, ["list", "--include-closed"]).output
+    assert all(word in everything for word in ("Open", "Stale", "Closed"))

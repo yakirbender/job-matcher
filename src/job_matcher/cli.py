@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -339,15 +340,26 @@ def list_jobs(
     links: Annotated[
         bool, typer.Option("--links", help="One job per line with its full link, to open.")
     ] = False,
+    stale_days: Annotated[
+        float, typer.Option(help="Hide jobs not seen at their source for this many days "
+                            "(boards are re-read every 7).")
+    ] = 10,
+    include_closed: Annotated[
+        bool, typer.Option("--include-closed", help="Also show closed and stale jobs.")
+    ] = False,
 ) -> None:
     """List screened jobs, best score first, in separate full-time / part-time sections."""
     settings = Settings.from_env()
     conn = db.connect(settings.db_path)
     try:
+        passed = not (rejected or reason)
+        open_since = None if include_closed else (
+            datetime.now(UTC) - timedelta(days=stale_days)).isoformat(timespec="seconds")
         rows = db.screened_jobs(
-            conn, passed=not (rejected or reason), reason=reason, metro=metro,
-            employment=employment, limit=limit,
+            conn, passed=passed, reason=reason, metro=metro,
+            employment=employment, open_since=open_since, limit=limit,
         )
+        hidden = db.count_hidden(conn, passed=passed, open_since=open_since) if open_since else 0
     finally:
         conn.close()
 
@@ -359,6 +371,9 @@ def list_jobs(
         elif section:
             console.print(_jobs_table(section, f"{title} ({len(section)})", show_reasons))
     console.print(f"{len(rows)} jobs shown (limit {limit}).")
+    if hidden:
+        console.print(f"{hidden} closed or stale jobs hidden (not seen at their source in "
+                      f"{stale_days:g} days); --include-closed shows them.")
 
 
 EMPLOYMENT_SECTIONS = (
@@ -432,6 +447,8 @@ def show(job_id: int) -> None:
         f"work mode {row['work_mode'] or 'unknown'} | posted {row['posted_at'] or '-'}"
     )
     console.print(row["url"])
+    if row["closed_at"]:
+        console.print(f"[yellow]Closed:[/yellow] gone from its board since {row['closed_at']}.")
     console.print(f"\n{row['description']}\n")
     if result is None:
         console.print("Not screened yet; run `jm filter`.")
@@ -582,7 +599,7 @@ def fetch_boards(
         f"{report.boards} boards read ({report.gone} gone, {len(report.failed)} failed), "
         f"{report.requests} requests. {report.jobs_listed} jobs listed, "
         f"{report.jobs_kept} kept: [green]{report.new} new[/green], {report.updated} updated, "
-        f"{report.unchanged} unchanged."
+        f"{report.unchanged} unchanged; {report.closed} stored jobs closed."
     )
     if report.stopped_reason:
         console.print(f"[yellow]Stopped early:[/yellow] {report.stopped_reason}")

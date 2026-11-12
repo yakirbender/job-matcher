@@ -218,3 +218,48 @@ def test_the_command_fetches_and_reports(tmp_path, monkeypatch):
     assert "ashby:acme" in result.output
     assert "2 listed, 1 kept" in result.output
     assert "1 new" in result.output
+
+
+# --- closed jobs ------------------------------------------------------------------------
+
+
+def closed_ids(conn):
+    rows = conn.execute("SELECT source_id FROM jobs WHERE closed_at IS NOT NULL ORDER BY id")
+    return [r[0] for r in rows]
+
+
+def test_jobs_missing_from_their_board_are_closed_and_reopened(conn):
+    add_boards(conn, "acme", "acme2")
+    fetch(conn, FakeReader({"acme": [board_job(1), board_job(2)], "acme2": []}))
+    # Another board whose token starts the same way: its job must stay open.
+    other = ashby_job(dict(ASHBY[0], id="job-9", title="Software Engineer"), "acme2")
+    db.upsert_job(conn, other)
+
+    report = fetch(conn, FakeReader({"acme": [board_job(1)], "acme2": [other]}),
+                   refresh_days=0)
+    assert report.closed == 1
+    assert closed_ids(conn) == ["acme:job-2"]
+
+    fetch(conn, FakeReader({"acme": [board_job(1), board_job(2)], "acme2": [other]}),
+          refresh_days=0)
+    assert closed_ids(conn) == []  # it came back
+
+
+def test_a_listed_job_no_longer_kept_stays_open_and_seen(conn):
+    add_boards(conn, "acme")
+    fetch(conn, FakeReader({"acme": [board_job(1)]}))
+    conn.execute("UPDATE jobs SET last_seen = '2026-01-01T00:00:00+00:00'")
+    # Still on the board, but the pre-filter no longer keeps it: open, and seen just now.
+    report = fetch(conn, FakeReader({"acme": [board_job(1, "Corporate FP&A Manager")]}),
+                   refresh_days=0)
+    assert (report.closed, closed_ids(conn)) == (0, [])
+    assert conn.execute("SELECT last_seen FROM jobs").fetchone()[0] > "2026-11"
+
+
+def test_a_gone_board_closes_its_jobs(conn):
+    add_boards(conn, "acme")
+    fetch(conn, FakeReader({"acme": [board_job(1)]}))
+    report = fetch(conn, FakeReader({"acme": BoardGone("board not found (HTTP 404)")}),
+                   refresh_days=0)
+    assert (report.gone, report.closed) == (1, 1)
+    assert closed_ids(conn) == ["acme:job-1"]

@@ -46,6 +46,7 @@ uv run jm label                                 # write private/labels.csv for y
 uv run jm eval                                  # compare your labels with the scorer
 uv run jm list --employment part_time           # one employment type only
 uv run jm list --links --limit 100              # each job with its full link to open
+uv run jm list --include-closed                 # also closed or stale jobs
 uv run jm list --rejected                       # ...or were rejected, with reasons
 uv run jm list --reason seniority --limit 20    # rejected for one reason
 uv run jm show 98                               # one job: text, tags + evidence, verdict
@@ -260,6 +261,11 @@ Boards are read never-fetched first, then stalest first, with a pause before eve
 Each board's result is saved as it finishes, so a stopped run resumes. A board that no
 longer exists (404, common for older crawl entries) is never tried again; one that failed
 is tried on the next run, and 5 failures in a row stop the run.
+
+A job that a board no longer lists is marked closed (all of a board's jobs when the board
+is gone), and reopened if it comes back. `jm list` hides closed jobs and any job not seen
+at its source in 10 days (`--stale-days`), which covers Adzuna jobs that haven't been
+refetched; `--include-closed` shows them. Nothing is deleted, so labels keep working.
 
 ## Limitations
 

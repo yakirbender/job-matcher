@@ -160,6 +160,10 @@ MIGRATIONS: list[str] = [
     ALTER TABLE boards ADD COLUMN jobs_listed INTEGER;
     ALTER TABLE boards ADD COLUMN jobs_kept INTEGER;
     """,
+    """
+    -- When a board job was found missing from its board (closed). Cleared if it reappears.
+    ALTER TABLE jobs ADD COLUMN closed_at TEXT;
+    """,
 ]
 
 # Columns written from a Job on every insert or content update.
@@ -309,14 +313,16 @@ def upsert_job(conn: sqlite3.Connection, job: Job, now: str | None = None) -> Up
     if existing["content_hash"] == row["content_hash"]:
         # Derived fields are refreshed too, so improved inference applies to old rows.
         conn.execute(
-            "UPDATE jobs SET last_seen = ?, metro = ?, work_mode = ? WHERE id = ?",
+            "UPDATE jobs SET last_seen = ?, metro = ?, work_mode = ?, closed_at = NULL"
+            " WHERE id = ?",
             (now, job.metro, job.work_mode, job_id),
         )
         return UpsertResult(job_id, "unchanged", existing["duplicate_of"])
 
     assignments = ", ".join(f"{c} = :{c}" for c in _JOB_COLUMNS)
     conn.execute(
-        f"UPDATE jobs SET {assignments}, last_seen = :now, updated_at = :now WHERE id = :id",
+        f"UPDATE jobs SET {assignments}, last_seen = :now, updated_at = :now,"
+        " closed_at = NULL WHERE id = :id",
         {**row, "now": now, "id": job_id},
     )
     return UpsertResult(job_id, "updated", existing["duplicate_of"])
@@ -512,6 +518,7 @@ def screened_jobs(
     reason: str | None = None,
     metro: str | None = None,
     employment: str | None = None,
+    open_since: str | None = None,
     limit: int = 50,
 ) -> list[sqlite3.Row]:
     """Screened jobs, best score first (then newest), with key tags flattened into columns."""
@@ -548,6 +555,9 @@ def screened_jobs(
     if metro:
         sql += " AND j.metro = ?"
         params.append(metro)
+    if open_since:  # hide closed jobs and ones not seen at their source since then
+        sql += " AND j.closed_at IS NULL AND j.last_seen >= ?"
+        params.append(open_since)
     sql += " ORDER BY score DESC NULLS LAST, j.posted_at DESC LIMIT ?"
     params.append(limit)
     return conn.execute(sql, params).fetchall()
@@ -676,6 +686,39 @@ def save_board_fetch(
         """,
         (now or utcnow(), status, error, listed, kept, ats, token),
     )
+
+
+def count_hidden(conn: sqlite3.Connection, *, passed: bool, open_since: str) -> int:
+    """How many screened jobs open_since would hide: closed, or not seen since then."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM jobs j JOIN filter_results f ON f.job_id = j.id"
+        " WHERE f.passed = ? AND (j.closed_at IS NOT NULL OR j.last_seen < ?)",
+        (int(passed), open_since),
+    ).fetchone()[0]
+
+
+def sync_board_jobs(
+    conn: sqlite3.Connection, ats: str, token: str, listed: set[str], now: str | None = None
+) -> int:
+    """Match this board's stored jobs against what it lists now; returns how many closed.
+
+    Listed jobs count as seen (even ones the pre-filter no longer keeps, which aren't saved
+    again) and are reopened if they were closed. The rest are marked closed. A board job's
+    source_id is "token:id"; an empty `listed` closes all of them (the board is gone).
+    """
+    now = now or utcnow()
+    prefix = f"{token}:"
+    rows = conn.execute(
+        "SELECT id, source_id, closed_at FROM jobs WHERE source = ?"
+        " AND substr(source_id, 1, ?) = ?",
+        (ats, len(prefix), prefix),
+    ).fetchall()
+    seen = [(now, row["id"]) for row in rows if row["source_id"] in listed]
+    missing = [(now, row["id"]) for row in rows
+               if row["source_id"] not in listed and row["closed_at"] is None]
+    conn.executemany("UPDATE jobs SET last_seen = ?, closed_at = NULL WHERE id = ?", seen)
+    conn.executemany("UPDATE jobs SET closed_at = ? WHERE id = ?", missing)
+    return len(missing)
 
 
 def confirmed_prefixes(conn: sqlite3.Connection) -> dict[str, set[str]]:
