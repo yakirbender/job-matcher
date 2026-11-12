@@ -115,7 +115,8 @@ Every stored job is re-screened on each run, so profile changes apply to old job
 
 **Rejection reasons**: `not_software` (title matches no role family), `seniority`,
 `experience` (more than `max_years_required`), `internship`, `excluded_keyword`, `company`,
-`location` (hybrid or on-site outside the target metros), `salary` (listed salaries only,
+`location` (hybrid or on-site outside the target metros, or anywhere outside the
+`countries` setting, `[us, ca]` by default), `salary` (listed salaries only,
 never Adzuna's estimates), `clearance` (only with `mode: exclude_active`), `duplicate`.
 
 **Notes** (kept, but flagged): `experience_unknown`, `remote_unconfirmed`, `salary_estimated`,
@@ -238,15 +239,19 @@ uv run jm fetch-boards                     # every board that's due
 
 A board lists every job a company has, worldwide, so jobs are kept only with a
 software-related title (any role family in the profile) **and** either a target metro or
-remote work in the US, Canada, or an unstated country. Everything else is counted, not
+remote work in a target country (`countries`) or an unstated one. Everything else is counted, not
 stored; the full filters still run later in `jm filter`. On Greenhouse, descriptions are
 downloaded only for kept jobs: a large board's descriptions can reach 10 MB, its plain job
 list under 500 KB.
 
 Locations are free text ("Orlando, FL", "Ontario, CAN", "Remote-Friendly, United States",
-or several places in one string), read by `places.py` into the same country › state › city
-shape Adzuna uses. A job with several places is filed under the most relevant: a target
-metro first, then remote in the US or Canada. Ashby states each job's work mode; Greenhouse
+or several places in one string, split on `|`, `;`, `/` or a capitalized `OR`), read by
+`places.py` into the same country › state › city shape Adzuna uses. Regions wholly outside
+the US and Canada ("Europe", "APAC", "LATAM") count as a non-target country; ones that
+include them ("North America", "Worldwide") leave the country unstated. A job with several
+places is filed under the most relevant: a target metro first, then remote in the US or
+Canada. The place is read again from the stored text on every `jm filter`, so parser fixes
+reach jobs fetched earlier. Ashby states each job's work mode; Greenhouse
 only says "remote" in its location text (its "Location Type" field is defined by each
 company and proved unreliable), so otherwise the mode is read from the description.
 

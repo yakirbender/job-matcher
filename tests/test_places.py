@@ -39,6 +39,20 @@ from job_matcher.places import Place, parse_place, parse_places
         ("London, UK", "united kingdom", ("United Kingdom", "London"), False),
         ("Wiesbaden, Germany", "germany", ("Germany", "Wiesbaden"), False),
         ("Tokyo, Japan", "japan", ("Japan", "Tokyo"), False),
+        ("Chile, Remote", "chile", ("Chile",), True),
+        ("Türkiye, Remote", "turkey", ("Turkey",), True),
+        ("Deutschland, remote", "germany", ("Germany",), True),
+        ("Republic of Ireland (Remote)", "ireland", ("Ireland",), True),
+        ("Sydney, NSW", "australia", ("Australia", "Sydney"), False),
+        ("Europe (Remote)", "europe", ("Europe",), True),  # a region outside the targets
+        ("Remote, APAC", "apac", ("APAC",), True),
+        ("Americas Remote", None, ("americas",), True),  # includes the US: stays unknown
+        ("World Wide - Remote", None, ("World Wide",), True),
+        ("Remote - US Only", "us", ("US",), True),
+        ("USA - Austin, TX", "us", ("US", "Texas", "Austin"), False),  # a country first
+        ("Remote - NA, APAC, EMEA", None, ("NA",), True),  # several regions, one is ours
+        ("Germany, DE, Deutschland", "germany", ("Germany",), False),  # one country, named 3 ways
+        ("Remote - Europe or North America", None, ("Europe or North America",), True),
         ("Springfield", None, ("Springfield",), False),  # nothing known: left as text
         ("", None, (), False),
     ],
@@ -65,3 +79,15 @@ def test_a_bare_remote_piece_belongs_to_the_place_beside_it():
 
 def test_empty_pieces_are_dropped():
     assert parse_places(" | Austin, TX ; ") == [parse_place("Austin, TX")]
+
+
+def test_several_places_are_split_on_slashes_and_capital_or():
+    assert [p.area for p in parse_places("Bellevue, WA / Dallas, TX")] == [
+        ("US", "Washington", "Bellevue"), ("US", "Texas", "Dallas")]
+    assert [p.area for p in parse_places("Bay Area OR Pittsburgh, PA OR Austin, TX")] == [
+        ("Bay Area",), ("US", "Pennsylvania", "Pittsburgh"), ("US", "Texas", "Austin")]
+
+
+def test_oregon_is_not_a_split():
+    assert parse_places("Portland, OR") == [parse_place("Portland, OR")]
+    assert parse_places("Bend, OR - Remote")[0].area == ("US", "Oregon", "Bend")

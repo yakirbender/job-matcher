@@ -30,6 +30,7 @@ class Exclusions(BaseModel):
 
 class Locations(BaseModel):
     metros: list[str] = []
+    countries: list[str] = ["us", "ca"]  # where remote jobs may be; others are rejected
 
 
 class Salary(BaseModel):

@@ -56,6 +56,18 @@ def test_remote_outside_metros_passes_and_unknown_is_noted():
     assert "remote_unconfirmed" in [n.code for n in unknown.notes]
 
 
+@pytest.mark.parametrize(("country", "passed"), [
+    ("us", True), ("ca", True), ("", True),  # unstated: kept for review
+    ("germany", False), ("europe", False),
+])
+def test_remote_jobs_must_be_in_a_target_country(country, passed):
+    job = make_job(metro=None, work_mode="remote", country=country)
+    result = run(job)
+    assert result.passed is passed
+    if not passed:
+        assert codes(result) == ["location"]
+
+
 def test_onsite_inside_a_target_metro_passes():
     assert run(make_job(metro="montreal", work_mode="onsite")).passed
 

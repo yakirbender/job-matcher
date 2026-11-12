@@ -105,7 +105,8 @@ def utc_timestamp(value: str | None) -> str | None:
 
 def choose_place(places: list[Place]) -> Place:
     """The place that matters most for this search: a target metro, then remote in the US
-    or Canada, then remote anywhere, then the first listed."""
+    or Canada, then remote in an unstated country, then the first with a known country
+    ("Sao Paulo / SP / Brazil" is Brazil), then the first listed."""
     for place in places:
         if metro_for(place.country or "", place.area):
             return place
@@ -114,6 +115,9 @@ def choose_place(places: list[Place]) -> Place:
             return place
     for place in places:
         if place.remote and place.country is None:
+            return place
+    for place in places:
+        if place.country:
             return place
     return places[0] if places else Place(None, (), False, "")
 
@@ -129,6 +133,19 @@ def stated_work_mode(job: Job) -> str | None:
         return mode or ("remote" if job.raw.get("isRemote") else None)
     if job.source == "greenhouse":
         return "remote" if choose_place(parse_places(job.location_display or "")).remote else None
+    return None
+
+
+def stated_place(job: Job) -> Place | None:
+    """The place the board states for this job, or None for other sources.
+
+    Worked out from the stored record each time, like stated_work_mode(), so a parser fix
+    reaches jobs fetched earlier when they're rescreened.
+    """
+    if job.source == "ashby":
+        return choose_place(_ashby_places(job.raw, stated_work_mode(job) == "remote"))
+    if job.source == "greenhouse":
+        return choose_place(parse_places(job.location_display or ""))
     return None
 
 
@@ -163,10 +180,14 @@ def _ashby_place(entry: dict[str, Any], remote: bool) -> Place | None:
     return Place(place.country, place.area, remote or place.remote, label)
 
 
+def _ashby_places(raw: dict[str, Any], remote: bool) -> list[Place]:
+    entries = [raw, *(raw.get("secondaryLocations") or [])]
+    return [p for e in entries if (p := _ashby_place(e, remote))]
+
+
 def ashby_job(raw: dict[str, Any], token: str) -> Job:
     work_mode = stated_work_mode(Job("ashby", "", "", "", "", raw=raw))
-    entries = [raw, *(raw.get("secondaryLocations") or [])]
-    places = [p for e in entries if (p := _ashby_place(e, work_mode == "remote"))]
+    places = _ashby_places(raw, work_mode == "remote")
     place = choose_place(places)
 
     salary = next(

@@ -87,3 +87,16 @@ def test_fetch_records_why_a_run_stopped(conn):
     pipeline.fetch(conn, source, specs, daily_limit=100, run_limit=1)
     stored = conn.execute("SELECT stopped_reason FROM runs").fetchone()[0]
     assert stored == "reached the --limit for this run"
+
+
+def test_screening_rereads_a_board_jobs_place(conn):
+    # Stored before the parser knew "Chile": the country was unknown, so the job passed.
+    job = make_job("1", source="greenhouse", title="Software Engineer", metro=None,
+                   country="", location_area=["Chile"], location_display="Chile, Remote")
+    result = db.upsert_job(conn, job)
+    conn.commit()
+    pipeline.screen(conn, PROFILE)
+    row = conn.execute("SELECT country, location_area_json, work_mode FROM jobs WHERE id = ?",
+                       (result.job_id,)).fetchone()
+    assert (row[0], json.loads(row[1]), row[2]) == ("chile", ["Chile"], "remote")
+    assert db.screened_jobs(conn, passed=False, reason="location")

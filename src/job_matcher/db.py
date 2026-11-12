@@ -362,10 +362,13 @@ def row_to_job(row: sqlite3.Row) -> Job:
 
 
 def update_derived(
-    conn: sqlite3.Connection, job_id: int, *, metro: str | None, work_mode: str | None
+    conn: sqlite3.Connection, job_id: int, *, country: str, location_area: list[str],
+    metro: str | None, work_mode: str | None,
 ) -> None:
     conn.execute(
-        "UPDATE jobs SET metro = ?, work_mode = ? WHERE id = ?", (metro, work_mode, job_id)
+        "UPDATE jobs SET country = ?, location_area_json = ?, metro = ?, work_mode = ?"
+        " WHERE id = ?",
+        (country, json.dumps(location_area, ensure_ascii=False), metro, work_mode, job_id),
     )
 
 

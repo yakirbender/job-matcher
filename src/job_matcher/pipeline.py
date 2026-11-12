@@ -27,7 +27,7 @@ from job_matcher.models import Job, SearchSpec
 from job_matcher.profile import Profile
 from job_matcher.scoring.base import Scorer
 from job_matcher.sources.base import JobSource, SourceAuthError, SourceError, SourceQuotaError
-from job_matcher.sources.boards import BoardError, BoardGone, stated_work_mode
+from job_matcher.sources.boards import BoardError, BoardGone, stated_place, stated_work_mode
 from job_matcher.suspicion import mass_template_tags, scam_phrase_tag
 from job_matcher.tagging import role_family, tag_job
 
@@ -49,6 +49,8 @@ class FetchReport:
 
 def enrich(job: Job) -> Job:
     """Fill in fields derived the same way for every source."""
+    if (place := stated_place(job)) is not None:  # a board's place text, read afresh
+        job.country, job.location_area = place.country or "", list(place.area)
     job.metro = metro_for(job.country, job.location_area, job.location_display)
     job.work_mode = stated_work_mode(job) or infer_work_mode(job.title, job.description)
     return job
@@ -263,7 +265,7 @@ def check_known_boards(
 
 def board_job_wanted(job: Job, profile: Profile) -> bool:
     """Whether a job from a company board is worth storing: a software-related title (any
-    role family) in a target metro, or remote in the US, Canada, or an unstated country.
+    role family) in a target metro, or remote in a target country or an unstated one.
 
     Boards list every job a company has, worldwide, so this runs before anything is saved
     (and, on Greenhouse, before the description is downloaded). The full filters still run
@@ -274,7 +276,7 @@ def board_job_wanted(job: Job, profile: Profile) -> bool:
     enrich(job)
     if job.metro in profile.locations.metros:
         return True
-    return job.work_mode == "remote" and job.country in ("us", "ca", "")
+    return job.work_mode == "remote" and job.country in (*profile.locations.countries, "")
 
 
 class BoardReader(Protocol):
@@ -448,9 +450,13 @@ def screen(conn: sqlite3.Connection, profile: Profile) -> ScreenReport:
     )
     try:
         for row, job in jobs:
+            job_before_enrich = {"country": job.country, "location_area": job.location_area,
+                                 "metro": row["metro"], "work_mode": row["work_mode"]}
             enrich(job)  # so improved metro/work-mode rules reach jobs fetched earlier
-            if (job.metro, job.work_mode) != (row["metro"], row["work_mode"]):
-                db.update_derived(conn, row["id"], metro=job.metro, work_mode=job.work_mode)
+            derived = {"country": job.country, "location_area": job.location_area,
+                       "metro": job.metro, "work_mode": job.work_mode}
+            if job_before_enrich != derived:
+                db.update_derived(conn, row["id"], **derived)
             tags = tag_job(job, profile)
             if template := templates.get(row["id"]):
                 tags.append(template)

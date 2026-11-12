@@ -70,7 +70,10 @@ def evaluate(
 
     work_mode = job.work_mode or "unknown"
     if job.metro not in profile.locations.metros:
-        if work_mode in ("hybrid", "onsite"):
+        if job.country and job.country not in profile.locations.countries:
+            where = job.location_display or job.country
+            reject(Reason("location", f"outside your countries: {where}"))
+        elif work_mode in ("hybrid", "onsite"):
             where = job.location_display or "an unlisted location"
             reject(Reason("location", f"{work_mode} in {where}"))
         elif work_mode == "unknown":

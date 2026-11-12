@@ -176,6 +176,9 @@ locations:
   # (or jobs whose work mode the snippet doesn't state, flagged for review).
   metros: [montreal, ottawa, toronto, orlando, tampa, miami, florida_other,
            austin, dallas, houston, san_antonio, texas_other]
+  # Remote jobs must be in one of these countries (us, ca). A remote job whose country
+  # isn't stated ("Remote") still passes.
+  countries: [us, ca]
 
 salary:
   # Minimum acceptable salary by currency, e.g. {CAD: 55000, USD: 60000}.

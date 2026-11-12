@@ -47,9 +47,32 @@ for _name in ("united kingdom", "germany", "france", "ireland", "india", "japan"
               "australia", "netherlands", "spain", "portugal", "italy", "poland", "israel",
               "singapore", "brazil", "mexico", "switzerland", "sweden", "denmark", "norway",
               "finland", "austria", "belgium", "argentina", "colombia", "philippines",
-              "south korea", "china", "new zealand", "romania", "ukraine", "czech republic"):
+              "south korea", "china", "new zealand", "romania", "ukraine", "czech republic",
+              "chile", "peru", "uruguay", "costa rica", "turkey", "greece", "hungary",
+              "bulgaria", "serbia", "croatia", "estonia", "latvia", "lithuania", "slovakia",
+              "slovenia", "south africa", "nigeria", "kenya", "egypt", "pakistan", "vietnam",
+              "indonesia", "malaysia", "thailand", "taiwan", "hong kong",
+              "united arab emirates", "saudi arabia"):
     COUNTRIES[_name] = (_name, _name.title())
-COUNTRIES["uk"] = COUNTRIES["england"] = ("united kingdom", "United Kingdom")
+# Other spellings, local names, and parts of a country ("Sydney, NSW").
+for _alias, _name in {
+    "uk": "united kingdom", "england": "united kingdom", "scotland": "united kingdom",
+    "republic of ireland": "ireland", "deutschland": "germany", "espana": "spain",
+    "brasil": "brazil", "turkiye": "turkey", "uae": "united arab emirates",
+    "nsw": "australia", "new south wales": "australia", "qld": "australia",
+    "queensland": "australia", "vic": "australia",
+}.items():
+    COUNTRIES[_alias] = COUNTRIES[_name]
+# Regions wholly outside the US and Canada count as a non-target country. Regions that
+# include them ("Americas", "North America", "Worldwide") stay unknown, so a job there is
+# still kept.
+for _name in ("europe", "emea", "apac", "asia", "asia pacific", "latam", "latin america",
+              "south america", "central america", "africa", "middle east", "oceania"):
+    COUNTRIES[_name] = (_name, _name.upper() if _name in ("emea", "apac", "latam")
+                        else _name.title())
+# Regions that include the US or Canada: a place naming one ("Remote - NA, APAC, EMEA")
+# has no single country.
+_INCLUDES_TARGETS = {"na", "north america", "americas", "worldwide", "world wide", "global"}
 
 # Two-letter country codes ("Dublin, IE"). Codes that are also a state or province ("DE"
 # for Germany or Delaware, "IN" for India or Indiana) are left out: they stay states.
@@ -83,7 +106,11 @@ _REMOTE = re.compile(r"\b(?:remote|teletravail|work from home|wfh|anywhere)\b")
 _REMOTE_FILLER = re.compile(r"\b(?:friendly|first|only|based|eligible|ok|in|within|from)\b")
 # Pieces that describe the job, not a place.
 _NOT_A_PLACE = {"travel required", "hybrid", "on site", "onsite", "in office", "flexible"}
-_PIECE_SPLIT = re.compile(r"\s*[|;]\s*")
+# Between places: "|", ";", "/", and a capitalized "OR" ("Pittsburgh, PA OR Austin, TX").
+# Oregon's "OR" ends its place, so "OR" splits only when another word follows it. A
+# lowercase "or" doesn't split: "Remote - Europe or North America" is one remote place.
+_PIECE_SPLIT = re.compile(r"\s*[|;/]\s*|\s+OR\s+(?=\w)")
+_ONLY = re.compile(r"\s+only$")  # "US Only"
 _PART_SPLIT = re.compile(r"\s*(?:,|\(|\)|\s[-–]\s)\s*")
 
 
@@ -117,17 +144,22 @@ def parse_place(text: str) -> Place:
     region: str | None = None
     province_seen = False
     unknown: list[str] = []
+    named: set[str] = set()  # every country or region the place names
 
     parts = _PART_SPLIT.split(text)
     for index, part in enumerate(parts):
-        key = _key(part)
+        key = _ONLY.sub("", _key(part))
         if _REMOTE.search(key):
             remote = True
             key = " ".join(_REMOTE_FILLER.sub(" ", _REMOTE.sub(" ", key)).split())
             part = key
         if not key or key in _NOT_A_PLACE:
             continue
-        if index == 0 and any(_is_region(p) for p in parts[1:]):
+        if key in _INCLUDES_TARGETS:
+            named.add(key)
+            unknown.append(part.strip())
+            continue
+        if index == 0 and key not in COUNTRIES and any(_is_region(p) for p in parts[1:]):
             unknown.append(part.strip())  # "Washington, DC", "New York, NY": first is the city
             continue
         if key == "ca":  # Canada after a province ("Ontario, CA"), otherwise California
@@ -137,6 +169,7 @@ def parse_place(text: str) -> Place:
                 region = region or "California"
         elif key in COUNTRIES:
             country = COUNTRIES[key]
+            named.add(country[0])
         elif key in CA_PROVINCES or key in _PROVINCE_NAMES:
             region = CA_PROVINCES.get(key) or _PROVINCE_NAMES[key]
             province_seen = True
@@ -145,6 +178,8 @@ def parse_place(text: str) -> Place:
         else:
             unknown.append(part.strip())
 
+    if len(named) > 1:  # "Remote - APAC, EMEA": no single country to file it under
+        return Place(None, tuple(unknown), remote, text)
     if country is None and region is not None:
         country = ("ca", "Canada") if province_seen else ("us", "US")
     if country is None and unknown and fold_key(unknown[0]) in CANADIAN_CITIES:
@@ -158,7 +193,7 @@ def parse_place(text: str) -> Place:
 
 
 def parse_places(text: str) -> list[Place]:
-    """Read every place in a string that may list several ("A | B", "A; B").
+    """Read every place in a string that may list several ("A | B", "A; B", "A / B", "A OR B").
 
     A piece that only says "remote" belongs to the place beside it: Ashby writes
     "United States | Remote" for one remote place.
