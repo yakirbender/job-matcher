@@ -45,6 +45,7 @@ uv run jm list                                  # passed jobs by score, full-/pa
 uv run jm label                                 # write private/labels.csv for you to label
 uv run jm eval                                  # compare your labels with the scorer
 uv run jm list --employment part_time           # one employment type only
+uv run jm list --links --limit 100              # each job with its full link to open
 uv run jm list --rejected                       # ...or were rejected, with reasons
 uv run jm list --reason seniority --limit 20    # rejected for one reason
 uv run jm show 98                               # one job: text, tags + evidence, verdict

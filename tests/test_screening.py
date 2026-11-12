@@ -100,3 +100,23 @@ def test_screening_rereads_a_board_jobs_place(conn):
                        (result.job_id,)).fetchone()
     assert (row[0], json.loads(row[1]), row[2]) == ("chile", ["Chile"], "remote")
     assert db.screened_jobs(conn, passed=False, reason="location")
+
+
+def test_list_links_prints_each_jobs_full_link(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from job_matcher import cli
+
+    path = tmp_path / "jobs.db"
+    conn = db.connect(path)
+    long_url = "https://job-boards.example/acme/jobs/" + "1" * 90  # longer than a table cell
+    db.upsert_job(conn, pipeline.enrich(make_job("1", title="Junior Developer", url=long_url)))
+    conn.commit()
+    pipeline.screen(conn, PROFILE)
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("JM_DB_PATH", str(path))
+    result = CliRunner().invoke(cli.app, ["list", "--links"])
+    assert result.exit_code == 0, result.output
+    assert long_url in result.output  # whole, on one line
+    assert "Junior Developer" in result.output

@@ -514,9 +514,9 @@ def screened_jobs(
     employment: str | None = None,
     limit: int = 50,
 ) -> list[sqlite3.Row]:
-    """Screened jobs, newest first, with their key tags flattened into columns."""
+    """Screened jobs, best score first (then newest), with key tags flattened into columns."""
     sql = """
-        SELECT j.id, j.title, j.company, j.metro, j.work_mode, j.posted_at,
+        SELECT j.id, j.title, j.company, j.metro, j.work_mode, j.posted_at, j.url,
                f.reasons_json, f.notes_json,
                (SELECT value FROM tags t WHERE t.job_id = j.id AND t.name = 'experience_years')
                    AS experience,

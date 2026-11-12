@@ -336,8 +336,11 @@ def list_jobs(
         typer.Option(help="Only full_time, part_time, either, or unknown."),
     ] = None,
     limit: Annotated[int, typer.Option(min=1)] = 50,
+    links: Annotated[
+        bool, typer.Option("--links", help="One job per line with its full link, to open.")
+    ] = False,
 ) -> None:
-    """List screened jobs, newest first, in separate full-time / part-time sections."""
+    """List screened jobs, best score first, in separate full-time / part-time sections."""
     settings = Settings.from_env()
     conn = db.connect(settings.db_path)
     try:
@@ -351,7 +354,9 @@ def list_jobs(
     show_reasons = rejected or reason is not None
     for value, title in EMPLOYMENT_SECTIONS:
         section = [r for r in rows if r["employment"] == value]
-        if section:
+        if section and links:
+            _print_links(section, f"{title} ({len(section)})")
+        elif section:
             console.print(_jobs_table(section, f"{title} ({len(section)})", show_reasons))
     console.print(f"{len(rows)} jobs shown (limit {limit}).")
 
@@ -362,6 +367,19 @@ EMPLOYMENT_SECTIONS = (
     ("either", "Full- or part-time"),
     ("unknown", "Employment type not stated"),
 )
+
+
+def _print_links(rows: list, title: str) -> None:
+    """Each job on one line, its link on the next. Kept out of a table, whose columns would
+    cut or wrap the link and break Ctrl+click."""
+    console.print()
+    console.print(f"[bold]{title}[/bold]")
+    for r in rows:
+        score = "-" if r["score"] is None else str(r["score"])
+        where = " · ".join(x for x in (r["metro"], r["work_mode"]) if x)
+        console.print(f"{score:>3}  #{r['id']}  {escape(r['title'])} — "
+                      f"{escape(r['company'] or 'unknown company')}  [dim]{where}[/dim]")
+        console.print(f"     [link={r['url']}]{escape(r['url'])}[/link]", soft_wrap=True)
 
 
 def _jobs_table(rows: list, title: str, show_reasons: bool) -> Table:
