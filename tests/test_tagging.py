@@ -86,9 +86,22 @@ def test_role_family(title, family):
         ("Experience needed: 3+ years", 3),
         ("Minimum experience: 4 years", 4),
         ("Expérience requise : 3 ans", 3),
+        # Requirements without the word "experience" (board postings).
+        ("Who you are: 4+ years in SRE, DevOps, or platform work", 4),
+        ("About you: 3–5 years writing readable, tested code", 3),
+        ("A minimum of 2 years building ML-oriented infrastructure", 2),
+        ("3+ years of Support Engineering or Software Engineering", 3),
+        ("at least three years taking models to production", 3),
         # No requirement stated.
         ("22 month contract, 1–2 days onsite per week, 401(k) match", None),
         ("Founded 25 years ago, we build simulation software.", None),
+        ("Named one of the best workplaces for 7+ years running", None),
+        ("You have 10 years to exercise your options", None),
+        ("Pay range: $70-85 an hour", None),
+        ("Applicants must be a minimum of 21 years of age", None),
+        ("We honor our 36+ year legacy", None),
+        ("Our roadmap over the next one to three years", None),
+        ("Sabbatical for employees with 5+ years of service", None),
     ],
 )
 def test_experience_years(text, years):
@@ -210,6 +223,34 @@ def test_stated_entry_level_counts_as_entry_wording():
     job = make_job(title="Software Developer", description="Seniority level: Entry level.")
     tags = {t.name: t.value for t in tag_job(job, PROFILE)}
     assert tags["entry_level"] == "description"
+
+
+@pytest.mark.parametrize(("title", "description", "where"), [
+    ("Software Engineer, Early Career", "", "title"),
+    ("University Grad Software Engineer 2027", "", "title"),
+    ("Software Engineer", "This role is ideal for an early-career professional.", "description"),
+    ("Software Engineer", "We welcome recent grads.", "description"),
+    ("Upgrade Engineer", "", None),  # "grad" only as a whole word
+])
+def test_early_career_and_grad_wording(title, description, where):
+    tags = {t.name: t.value for t in tag_job(make_job(title=title, description=description),
+                                             PROFILE)}
+    assert tags.get("entry_level") == where
+
+
+def test_stretch_titles_can_be_rejected_instead():
+    seniority = PROFILE.seniority.model_copy(update={
+        "exclude_title": [*PROFILE.seniority.exclude_title, *PROFILE.seniority.stretch_title],
+        "stretch_title": [],
+    })
+    profile = PROFILE.model_copy(update={"seniority": seniority})
+
+    def senior(title):
+        return {t.name: t.value for t in tag_job(make_job(title=title), profile)}.get("seniority")
+
+    assert senior("Software Engineer II") == "senior"
+    assert senior("Intermediate Developer") == "senior"
+    assert senior("Software Engineer I/II") is None  # open to an Engineer I
 
 
 def test_tag_job_entry_level_beats_seniority_words():

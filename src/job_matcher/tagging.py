@@ -36,6 +36,9 @@ _NUMBER_WORDS = {
 _NUM = r"(\d{1,2}|" + "|".join(_NUMBER_WORDS) + r")"
 _RANGE = rf"{_NUM}\s*\+?\s*(?:(?:-|–|to|or|a)\s*{_NUM}\s*)?\+?"
 _UNIT = r"(?:years?|yrs?|ans?|annees?)"
+# What follows "N years" when it isn't experience: age, company history, benefits, time.
+_NOT_EXPERIENCE = (r"(?!\s+(?:of\s+)?(?:age|old|ago|later|from now|hour|legacy|history"
+                   r"|heritage|of service|in business))")
 _EXPERIENCE_PATTERNS = [
     # "3-5 years of Java experience", "5+ yrs experience", "3 ans d'experience"
     re.compile(rf"(?<!\w){_RANGE}\s*{_UNIT}(?!\w)[^.;]{{0,40}}?(?<!\w)experiences?(?!\w)"),
@@ -51,6 +54,18 @@ _EXPERIENCE_PATTERNS = [
         r"(?:required|requirements?|needed|requise|exigee|minimale|minimum)?\s*"
         r"(?::|-|of|de|minimum de|minimum of|of at least)?"
         rf"\s*(?:at least\s*|minimum\s*)?{_RANGE}\s*{_UNIT}(?!\w)"
+    ),
+    # "A minimum of 2 years building ...", "at least 3 years in ..."
+    re.compile(rf"(?<!\w)(?:minimum of|at least|minimum)\s+{_RANGE}\s*{_UNIT}(?!\w)"
+               + _NOT_EXPERIENCE),
+    # "5+ years in SRE", "3-5 years writing tested code", "8+ years building systems": a
+    # plus sign or a range marks a requirement even without the word "experience". Not
+    # after "for", "over", "next", ... ("named a best workplace for 7+ years"), not pay
+    # ("$70-85 an hour"), and not "N years to exercise your options" (no plus or range).
+    re.compile(
+        r"(?<!\bfor )(?<!\bover )(?<!\bpast )(?<!\blast )(?<!\bnext )(?<!\bthan )"
+        r"(?<!\bnearly )(?<!\balmost )(?<!\babout )(?<!\bwithin )(?<![\w$])"
+        rf"{_NUM}\s*(?:\+|(?:-|–|to)\s*{_NUM}\s*\+?)\s*{_UNIT}(?!\w)" + _NOT_EXPERIENCE
     ),
 ]
 

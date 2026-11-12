@@ -113,8 +113,14 @@ seniority:
     - entry-level
     - new grad
     - new graduate
+    - new grads
+    - new college grad
     - recent graduate
     - graduate
+    - grad
+    - university grad
+    - early career
+    - early-career
     - associate
     - apprentice
     - engineer i
@@ -136,6 +142,11 @@ seniority:
     - new graduate
     - recent graduate
     - recent graduates
+    - recent grad
+    - recent grads
+    - new grads
+    - early career
+    - early-career
     - débutant
     - débutante
     - nouveau diplômé
@@ -145,6 +156,7 @@ seniority:
     - finissante
     - premier emploi
   # Titles that usually mean 1-3 years ("Software Engineer II"): kept, scored as a stretch.
+  # To reject them instead, move these words to exclude_title and leave this list empty.
   stretch_title:
     - ii
     - engineer 2
