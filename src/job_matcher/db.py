@@ -164,6 +164,29 @@ MIGRATIONS: list[str] = [
     -- When a board job was found missing from its board (closed). Cleared if it reappears.
     ALTER TABLE jobs ADD COLUMN closed_at TEXT;
     """,
+    """
+    -- A local model's reading of a posting's requirements, one row per job and model.
+    -- Redone when the posting (content_hash) or the instructions (prompt_version) change.
+    CREATE TABLE extractions (
+        job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        model           TEXT NOT NULL,
+        prompt_version  TEXT NOT NULL,
+        content_hash    TEXT NOT NULL,
+        fields_json     TEXT NOT NULL,
+        unverified_json TEXT NOT NULL,  -- claims dropped because their quote wasn't found
+        prompt_tokens   INTEGER,
+        output_tokens   INTEGER,
+        seconds         REAL,
+        extracted_at    TEXT NOT NULL,
+        PRIMARY KEY (job_id, model)
+    );
+    """,
+    """
+    -- The model's answer before checking, so a change to the checks can be applied to
+    -- saved answers without asking the model again (hours on a laptop).
+    ALTER TABLE extractions ADD COLUMN answer_json TEXT;
+    ALTER TABLE extractions ADD COLUMN check_version TEXT;
+    """,
 ]
 
 # Columns written from a Job on every insert or content update.
@@ -759,3 +782,90 @@ def stats(conn: sqlite3.Connection) -> dict[str, object]:
             """
         ),
     }
+
+
+# --- extractions (local model) ----------------------------------------------------
+
+
+def jobs_to_extract(
+    conn: sqlite3.Connection, model: str, prompt_version: str, limit: int | None = None
+) -> list[tuple[sqlite3.Row, Job]]:
+    """Passing jobs with no current extraction from this model, best keyword score first,
+    so a run cut short has done the most promising jobs."""
+    sql = """
+        SELECT j.* FROM jobs j
+        JOIN filter_results f ON f.job_id = j.id AND f.passed = 1
+        LEFT JOIN extractions e ON e.job_id = j.id AND e.model = ?
+        WHERE e.job_id IS NULL OR e.prompt_version != ? OR e.content_hash != j.content_hash
+        ORDER BY (SELECT MAX(score) FROM scores s WHERE s.job_id = j.id) DESC NULLS LAST, j.id
+    """
+    params: list[object] = [model, prompt_version]
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return [(row, row_to_job(row)) for row in conn.execute(sql, params).fetchall()]
+
+
+def save_extraction(
+    conn: sqlite3.Connection, job_id: int, *, model: str, prompt_version: str,
+    check_version: str, content_hash: str, answer_json: str, fields: dict,
+    unverified: list[str], prompt_tokens: int, output_tokens: int, seconds: float,
+    now: str | None = None,
+) -> None:
+    """Store (or replace) this model's reading of a job: its raw answer and the checked
+    fields. The caller commits."""
+    conn.execute(
+        """
+        INSERT INTO extractions (job_id, model, prompt_version, check_version, content_hash,
+            answer_json, fields_json, unverified_json, prompt_tokens, output_tokens,
+            seconds, extracted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (job_id, model) DO UPDATE SET
+            prompt_version = excluded.prompt_version,
+            check_version = excluded.check_version, content_hash = excluded.content_hash,
+            answer_json = excluded.answer_json, fields_json = excluded.fields_json,
+            unverified_json = excluded.unverified_json,
+            prompt_tokens = excluded.prompt_tokens, output_tokens = excluded.output_tokens,
+            seconds = excluded.seconds, extracted_at = excluded.extracted_at
+        """,
+        (job_id, model, prompt_version, check_version, content_hash, answer_json,
+         json.dumps(fields, ensure_ascii=False, sort_keys=True),
+         json.dumps(unverified), prompt_tokens, output_tokens, round(seconds, 2),
+         now or utcnow()),
+    )
+
+
+def extractions_to_recheck(
+    conn: sqlite3.Connection, model: str, check_version: str
+) -> list[tuple[sqlite3.Row, Job]]:
+    """This model's saved answers that were checked by an older version of the checks."""
+    rows = conn.execute(
+        """
+        SELECT j.*, e.answer_json AS answer_json FROM extractions e
+        JOIN jobs j ON j.id = e.job_id
+        WHERE e.model = ? AND e.answer_json IS NOT NULL
+          AND (e.check_version IS NULL OR e.check_version != ?)
+        ORDER BY j.id
+        """,
+        (model, check_version),
+    ).fetchall()
+    return [(row, row_to_job(row)) for row in rows]
+
+
+def update_checked(
+    conn: sqlite3.Connection, job_id: int, model: str, *, check_version: str, fields: dict,
+    unverified: list[str],
+) -> None:
+    """Replace the checked fields of a saved answer. The caller commits."""
+    conn.execute(
+        "UPDATE extractions SET fields_json = ?, unverified_json = ?, check_version = ?"
+        " WHERE job_id = ? AND model = ?",
+        (json.dumps(fields, ensure_ascii=False, sort_keys=True), json.dumps(unverified),
+         check_version, job_id, model),
+    )
+
+
+def job_extraction(conn: sqlite3.Connection, job_id: int, model: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM extractions WHERE job_id = ? AND model = ?", (job_id, model)
+    ).fetchone()

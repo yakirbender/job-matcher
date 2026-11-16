@@ -14,7 +14,7 @@ a free, local keyword scorer.
 | Company boards (Ashby, Greenhouse APIs) | Free, no key |
 | Adzuna (retired as a source), trial key | Free, 25 calls total |
 | Adzuna (retired as a source), regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
-| LLM scoring (optional, not built) | A local model via Ollama is free; the Claude API needs prepaid credits |
+| Reading requirements with a local model (`jm extract`) | Free: [Ollama](https://ollama.com) runs it on this computer; a model is a one-time 3-7 GB download |
 
 ## Setup
 
@@ -43,6 +43,7 @@ uv run jm filter                                # tag and filter every stored jo
 uv run jm cv                                    # what's extracted from your CV
 uv run jm score                                 # score passed jobs against your CV
 uv run jm list                                  # passed jobs by score, full-/part-time
+uv run jm extract --limit 5                     # a local model reads 5 passing jobs (Ollama)
 uv run jm label                                 # write private/labels.csv for you to label
 uv run jm eval                                  # compare your labels with the scorer
 uv run jm list --employment part_time           # one employment type only
@@ -190,6 +191,36 @@ it should fall from apply to skip), a label-vs-verdict grid, and every disagreem
 reason next to the pipeline's explanation. Each disagreement is either a scorer mistake (fix a rule or weight) or a
 personal preference the profile doesn't capture yet. The `Scorer` interface (`scoring/base.py`) lets a local
 LLM or API scorer replace the keyword scorer later.
+
+## Reading requirements with a local model (`jm extract`)
+
+A local language model, run by [Ollama](https://ollama.com) on this computer, reads each
+passing job's full posting and records what it requires: years of experience (and whether
+a degree replaces them), an entry-level band, the level, must-have and nice-to-have
+technical skills, the degree, work authorization, and clearance. Nothing leaves the
+computer, and it costs nothing beyond the download.
+
+```bash
+ollama pull qwen3.5:9b                 # once: the default model (6.6 GB)
+uv run jm extract --limit 5            # read the 5 best-scoring jobs not read yet
+uv run jm extract --model qwen3.5:4b   # a smaller, faster model (3.3 GB)
+```
+
+Small models sometimes state things a posting never says, so every claim that could rule
+a job out comes with a quote, and the code checks it: the quote must appear in the
+posting (ignoring case, accents and punctuation) and be about that claim. A work-permit
+quote must mention citizenship, permits, visas or sponsorship, and "Bachelor's degree OR
+2+ years" counts as a degree replacing the years only when the quote names a degree, years
+and an alternative. Claims that fail are reset to "not stated" and recorded as dropped.
+In testing, this caught a clearance the model invented, a work permit inferred from the
+job's location, and "degree or equivalent experience" read backwards. Work mode, location
+and salary aren't asked: the boards already state them.
+
+Results are saved per job and model (`extractions` table) as each job finishes, so a run
+stopped with Ctrl+C resumes. A job is read again only when its posting, the model, or the
+instructions (`PROMPT_VERSION`) change. On a laptop processor without a graphics card,
+`qwen3.5:9b` took 1-2 minutes per job and `qwen3.5:4b` about 1. The results aren't used by
+the filters or the scorer yet; that comes after comparing them with hand-labeled jobs.
 
 ## Board discovery (in progress)
 

@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from job_matcher import db
 from job_matcher.discovery import (
     BOARD_HOSTS,
@@ -21,9 +23,19 @@ from job_matcher.discovery import (
     pending_patterns,
     read_until_stable,
 )
+from job_matcher.extraction import (
+    CHECK_VERSION,
+    PROMPT_VERSION,
+    SYSTEM_PROMPT,
+    Extraction,
+    check_quotes,
+    response_schema,
+    user_message,
+)
 from job_matcher.filters import evaluate
 from job_matcher.location import infer_work_mode, metro_for
 from job_matcher.models import Job, SearchSpec
+from job_matcher.ollama import ModelMissing, OllamaClient, OllamaError, OllamaUnavailable, TooLong
 from job_matcher.profile import Profile
 from job_matcher.scoring.base import Scorer
 from job_matcher.sources.base import JobSource, SourceAuthError, SourceError, SourceQuotaError
@@ -483,3 +495,129 @@ def screen(conn: sqlite3.Connection, profile: Profile) -> ScreenReport:
         conn.rollback()
         raise
     return report
+
+
+# --- extraction (local model) ---------------------------------------------------------
+
+
+@dataclass
+class ExtractReport:
+    jobs: int = 0  # jobs attempted
+    saved: int = 0
+    unverified: int = 0  # claims dropped because their quote wasn't in the posting
+    rechecked: int = 0  # saved answers checked again after the checks changed
+    too_long: list[int] = field(default_factory=list)  # job ids
+    failed: list[str] = field(default_factory=list)  # "#id: why"
+    seconds: float = 0.0
+    stopped_reason: str | None = None
+
+
+# Called after each job with its id, title, status (saved / too_long / failed) and a detail.
+ExtractCallback = Callable[[int, str, str, str], None]
+
+
+def extract(
+    conn: sqlite3.Connection,
+    client: OllamaClient,
+    model: str,
+    *,
+    limit: int | None = None,
+    stop_after_failures: int = 3,
+    on_job: ExtractCallback | None = None,
+) -> ExtractReport:
+    """Have a local model read each passing job that has no current extraction.
+
+    Each result is committed as soon as it's saved, so a stopped run resumes. Ollama being
+    down or the model missing stops the run at once; anything else counts as one failed job.
+    """
+    report = ExtractReport()
+    report.rechecked = recheck(conn, model)
+    schema = response_schema()
+    failures_in_a_row = 0
+    for row, job in db.jobs_to_extract(conn, model, PROMPT_VERSION, limit):
+        report.jobs += 1
+        posting = user_message(job)
+        try:
+            reply, extraction = _ask(client, model, posting, schema)
+        except (OllamaUnavailable, ModelMissing):
+            raise
+        except TooLong as exc:
+            report.too_long.append(row["id"])
+            if on_job:
+                on_job(row["id"], job.title, "too_long", str(exc))
+            continue
+        except (OllamaError, ValidationError) as exc:
+            reason = str(exc).splitlines()[0][:120]
+            report.failed.append(f"#{row['id']}: {reason}")
+            if on_job:
+                on_job(row["id"], job.title, "failed", reason)
+            failures_in_a_row += 1
+            if failures_in_a_row >= stop_after_failures:
+                report.stopped_reason = f"{failures_in_a_row} failed jobs in a row"
+                break
+            continue
+
+        failures_in_a_row = 0
+        checked = check_quotes(extraction, posting)
+        db.save_extraction(
+            conn, row["id"], model=model, prompt_version=PROMPT_VERSION,
+            check_version=CHECK_VERSION, content_hash=row["content_hash"],
+            answer_json=extraction.model_dump_json(), fields=checked.fields,
+            unverified=checked.unverified, prompt_tokens=reply.prompt_tokens,
+            output_tokens=reply.output_tokens, seconds=reply.seconds,
+        )
+        conn.commit()
+        report.saved += 1
+        report.unverified += len(checked.unverified)
+        report.seconds += reply.seconds
+        if on_job:
+            on_job(row["id"], job.title, "saved", _summary(checked.fields, checked.unverified,
+                                                           reply.seconds))
+    return report
+
+
+def recheck(conn: sqlite3.Connection, model: str) -> int:
+    """Apply the current checks to saved answers checked by an older version. No model
+    needed: takes seconds where re-reading would take hours. Returns how many changed."""
+    count = 0
+    for row, job in db.extractions_to_recheck(conn, model, CHECK_VERSION):
+        checked = check_quotes(Extraction.model_validate_json(row["answer_json"]),
+                               user_message(job))
+        db.update_checked(conn, row["id"], model, check_version=CHECK_VERSION,
+                          fields=checked.fields, unverified=checked.unverified)
+        count += 1
+    conn.commit()
+    return count
+
+
+def _ask(client: OllamaClient, model: str, posting: str,
+         schema: dict[str, Any]) -> tuple[Any, Extraction]:
+    """Ask once; if the answer doesn't fit the schema, ask once more."""
+    for attempt in (1, 2):
+        reply = client.chat(model, SYSTEM_PROMPT, posting, schema)
+        try:
+            return reply, Extraction.model_validate_json(reply.content)
+        except ValidationError:
+            if attempt == 2:
+                raise
+    raise AssertionError("unreachable")
+
+
+def _summary(fields: dict[str, Any], unverified: list[str], seconds: float) -> str:
+    years = fields["years_required"]
+    with_degree = fields["years_with_degree"]
+    parts = [
+        f"{seconds:5.1f}s",
+        "years -" if years is None else f"years {years}"
+        + ("" if with_degree in (None, years) else f" ({with_degree} with degree)"),
+        f"level {fields['level']}",
+    ]
+    if fields["entry_level_band"]:
+        parts.append("entry band")
+    if fields["work_authorization"] != "none_stated":
+        parts.append(f"auth {fields['work_authorization']}")
+    if fields["clearance"] != "none":
+        parts.append(f"clearance {fields['clearance']}")
+    if unverified:
+        parts.append(f"dropped unquoted: {', '.join(unverified)}")
+    return ", ".join(parts)

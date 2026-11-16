@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from job_matcher import db, labels, pipeline
+from job_matcher import db, labels, ollama, pipeline
 from job_matcher.config import DEFAULT_CONFIG_PATH, Settings, load_search_config
 from job_matcher.cv import (
     CvError,
@@ -628,6 +628,54 @@ def fetch_boards(
         console.print(f"[yellow]Stopped early:[/yellow] {report.stopped_reason}")
     if report.new or report.updated:
         console.print("Run [bold]jm filter[/bold] and [bold]jm score[/bold] to rank them.")
+
+
+DEFAULT_EXTRACT_MODEL = "qwen3.5:9b"
+
+
+@app.command()
+def extract(
+    model: Annotated[str, typer.Option(help="Ollama model to read postings with.")] = (
+        DEFAULT_EXTRACT_MODEL),
+    limit: Annotated[
+        int | None, typer.Option(min=1, help="Stop after this many jobs.")
+    ] = None,
+    ollama_url: Annotated[
+        str, typer.Option(help="Where Ollama listens (this computer by default).")
+    ] = ollama.DEFAULT_URL,
+) -> None:
+    """Have a local model (Ollama) read each passing job's requirements. Free, offline."""
+
+    def show_job(job_id: int, title: str, status: str, detail: str) -> None:
+        colour = {"saved": "green", "too_long": "yellow", "failed": "red"}[status]
+        console.print(f"#{job_id:<5} [{colour}]{status:<8}[/{colour}] {escape(title[:45]):<45}"
+                      f"  {escape(detail)}")
+
+    conn = db.connect(Settings.from_env().db_path)
+    try:
+        with httpx.Client(timeout=600) as http:
+            client = ollama.OllamaClient(http, ollama_url)
+            report = pipeline.extract(conn, client, model, limit=limit, on_job=show_job)
+    except (ollama.OllamaUnavailable, ollama.ModelMissing) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+    except KeyboardInterrupt:
+        console.print("[yellow]Interrupted.[/yellow] Finished jobs are saved; "
+                      "run the command again to resume.")
+        raise typer.Exit(130) from None
+    finally:
+        conn.close()
+
+    if report.rechecked:
+        console.print(f"Checked {report.rechecked} saved answers again with the current checks.")
+    per_job = f", {report.seconds / report.saved:.0f}s per job" if report.saved else ""
+    console.print(
+        f"{report.saved} of {report.jobs} jobs read with {model}{per_job}. "
+        f"{report.unverified} unquoted claims dropped, {len(report.too_long)} too long, "
+        f"{len(report.failed)} failed."
+    )
+    if report.stopped_reason:
+        console.print(f"[yellow]Stopped early:[/yellow] {report.stopped_reason}")
 
 
 @app.command()
