@@ -94,6 +94,7 @@ seniority:
     - architecte
     - chief
     - chef
+    - distinguished
     - gestionnaire
     - expert
     - experte
@@ -104,6 +105,9 @@ seniority:
     - programmer 3
     - level 3
     - level 4
+  # Senior words an entry-level word can't override: "Senior Support Engineer I" is
+  # senior. (Others in exclude_title can be: "Associate / Staff Analyst" is kept.)
+  always_senior_title: [senior, sr, sénior]
   # Entry-level wording. Title matches are strong signals; description matches are
   # weaker, so ambiguous words ("associate", "graduate") are only checked in titles.
   entry_level_title:

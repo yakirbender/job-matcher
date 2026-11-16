@@ -238,6 +238,19 @@ def test_early_career_and_grad_wording(title, description, where):
     assert tags.get("entry_level") == where
 
 
+@pytest.mark.parametrize(("title", "senior", "entry"), [
+    ("Senior Support Engineer I", "senior", None),  # "Senior" beats "Engineer I"
+    ("Sr. Software Engineer I", "sr", None),
+    ("Senior Associate Developer", "senior", None),
+    ("Software Engineer I", None, "engineer i"),
+    ("Associate / Staff Analyst", None, "associate"),  # other senior words still yield
+    ("Distinguished Software Engineer, AI", "distinguished", None),
+])
+def test_senior_words_beat_entry_words(title, senior, entry):
+    tags = {t.name: t.evidence for t in tag_job(make_job(title=title), PROFILE)}
+    assert (tags.get("seniority"), tags.get("entry_level")) == (senior, entry)
+
+
 def test_stretch_titles_can_be_rejected_instead():
     seniority = PROFILE.seniority.model_copy(update={
         "exclude_title": [*PROFILE.seniority.exclude_title, *PROFILE.seniority.stretch_title],

@@ -146,3 +146,54 @@ def test_list_hides_closed_and_stale_jobs(tmp_path, monkeypatch):
 
     everything = CliRunner().invoke(cli.app, ["list", "--include-closed"]).output
     assert all(word in everything for word in ("Open", "Stale", "Closed"))
+
+
+def test_fetch_from_adzuna_is_refused_unless_asked(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from job_matcher import cli
+
+    monkeypatch.setenv("JM_DB_PATH", str(tmp_path / "jobs.db"))
+    result = CliRunner().invoke(cli.app, ["fetch"])
+    assert result.exit_code == 1
+    assert "retired" in result.output and "--use-adzuna" in result.output
+    assert not (tmp_path / "jobs.db").exists()  # nothing was opened or fetched
+
+
+def test_label_picks_only_open_unlabeled_jobs(tmp_path, monkeypatch):
+    import csv
+
+    from typer.testing import CliRunner
+
+    from job_matcher import cli, labels
+    from job_matcher.cv import load_vocabulary, parse_cv
+    from job_matcher.scoring import KeywordScorer
+
+    from .test_cv import CV_TEXT
+
+    path = tmp_path / "jobs.db"
+    conn = db.connect(path)
+    ids = {}
+    for n, title in enumerate(["Junior Developer Open", "Junior Developer Labeled",
+                               "Junior Developer Stale"], start=1):
+        seen = "2026-01-01T00:00:00+00:00" if "Stale" in title else None
+        ids[title] = db.upsert_job(conn, pipeline.enrich(make_job(str(n), title=title)),
+                                   now=seen).job_id
+    conn.commit()
+    pipeline.screen(conn, PROFILE)
+    vocab = load_vocabulary(Path(__file__).parents[1] / "config" / "skills.yaml")
+    pipeline.score(conn, KeywordScorer(parse_cv(CV_TEXT, vocab), PROFILE, vocab),
+                   cv_hash="test", profile=PROFILE)
+    conn.commit()
+    conn.close()
+
+    main = tmp_path / "labels.csv"
+    main.write_text(f"id,label\n{ids['Junior Developer Labeled']},2\n", encoding="utf-8")
+    monkeypatch.setattr(labels, "DEFAULT_LABELS_PATH", main)
+    monkeypatch.setenv("JM_DB_PATH", str(path))
+    out = tmp_path / "new.csv"
+    result = CliRunner().invoke(cli.app, ["label", "--file", str(out)])
+    assert result.exit_code == 0, result.output
+    with out.open(encoding="utf-8-sig") as f:
+        titles = [row["title"] for row in csv.DictReader(f)]
+    assert titles == ["Junior Developer Open"]

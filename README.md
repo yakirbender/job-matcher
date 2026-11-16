@@ -12,8 +12,8 @@ a free, local keyword scorer.
 | Filtering, tagging, scoring (everything local) | Free |
 | Board discovery (Common Crawl index) | Free |
 | Company boards (Ashby, Greenhouse APIs) | Free, no key |
-| Adzuna, trial key | Free, 25 calls total |
-| Adzuna, regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
+| Adzuna (retired as a source), trial key | Free, 25 calls total |
+| Adzuna (retired as a source), regular use | API Access plan, £8/month (500 calls/day, 5,000/month) |
 | LLM scoring (optional, not built) | A local model via Ollama is free; the Claude API needs prepaid credits |
 
 ## Setup
@@ -24,7 +24,10 @@ Requires [uv](https://docs.astral.sh/uv/). From the project root:
 uv sync
 ```
 
-Copy `.env.example` to `.env` in the project root and add your Adzuna `app_id` and `app_key`
+Company boards (`jm discover`, `jm fetch-boards`) need no key. Adzuna is retired as a
+source: its links go through an aggregator and often lead nowhere to apply, so `jm fetch`
+refuses unless you pass `--use-adzuna`. Jobs already fetched from it are kept. To use it,
+copy `.env.example` to `.env` in the project root and add your Adzuna `app_id` and `app_key`
 (developer.adzuna.com → Dashboard → API Access Details). `.env` is git-ignored.
 
 `config/` holds example settings. To use your own, copy `config/profile.example.yaml` to
@@ -34,10 +37,8 @@ edit those. `private/` is git-ignored, and the app uses a file there when it exi
 ## Usage
 
 ```bash
-uv run jm fetch --plan                          # list searches and request budget, call nothing
-uv run jm fetch -r orlando --limit 3            # one region, at most 3 API calls
-uv run jm fetch -r remote_ca -t "développeur junior"   # one exact term from the config
-uv run jm fetch                                 # every enabled region
+uv run jm fetch --plan                          # Adzuna (retired): list searches, call nothing
+uv run jm fetch --use-adzuna -r orlando --limit 3   # Adzuna anyway: one region, 3 calls
 uv run jm filter                                # tag and filter every stored job
 uv run jm cv                                    # what's extracted from your CV
 uv run jm score                                 # score passed jobs against your CV

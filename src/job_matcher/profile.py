@@ -16,6 +16,8 @@ DEFAULT_PROFILE_PATH = personal_or_example("profile")
 
 class Seniority(BaseModel):
     exclude_title: list[str] = []
+    # Senior words that an entry-level word can't override ("Senior Support Engineer I").
+    always_senior_title: list[str] = ["senior", "sr", "sénior"]
     entry_level_title: list[str] = []
     entry_level_description: list[str] = []
     stretch_title: list[str] = []

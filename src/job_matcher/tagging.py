@@ -309,13 +309,16 @@ def tag_job(job: Job, profile: Profile) -> list[Tag]:
         tags.append(level)
 
     entry = find_any(title, seniority.entry_level_title)
-    if entry:
+    if entry and (senior := find_any(title, seniority.always_senior_title)):
+        entry = None  # "Senior Support Engineer I": the "I" doesn't make it entry level
+        tags.append(Tag("seniority", "senior", senior))
+    elif entry:
         tags.append(Tag("entry_level", "title", entry))
     elif desc_entry := find_any(job.description, seniority.entry_level_description):
         tags.append(Tag("entry_level", "description", desc_entry))
     elif level and level.value == "entry":
         tags.append(Tag("entry_level", "description", level.evidence))
-    if not entry:
+    if not entry and not any(t.name == "seniority" for t in tags):
         if senior := find_any(title, seniority.exclude_title):
             tags.append(Tag("seniority", "senior", senior))
         elif level and level.value == "senior":

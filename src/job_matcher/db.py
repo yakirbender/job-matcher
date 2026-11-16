@@ -454,7 +454,7 @@ def scored_jobs(conn: sqlite3.Connection, scorer: str = "keyword") -> list[sqlit
     return conn.execute(
         """
         SELECT j.id, j.title, j.company, j.location_display, j.work_mode, j.posted_at,
-               j.url, j.description, s.score, s.explanation_json,
+               j.url, j.description, j.last_seen, j.closed_at, s.score, s.explanation_json,
                COALESCE((SELECT value FROM tags t
                          WHERE t.job_id = j.id AND t.name = 'employment'), 'unknown')
                    AS employment

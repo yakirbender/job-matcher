@@ -71,14 +71,25 @@ def fetch(
     plan: Annotated[
         bool, typer.Option("--plan", help="List the searches and request budget; call nothing.")
     ] = False,
+    use_adzuna: Annotated[
+        bool, typer.Option("--use-adzuna", help="Fetch from Adzuna even though it's retired.")
+    ] = False,
 ) -> None:
-    """Pull new postings from the configured source into the database."""
+    """Pull new postings from Adzuna (retired: use jm fetch-boards) into the database."""
     try:
         cfg = load_search_config(config)
         specs = cfg.specs(regions=region, max_pages=max_pages, terms=term, title_only=title_only)
     except (ValidationError, ValueError) as exc:
         console.print(f"[red]Config error:[/red] {exc}")
         raise typer.Exit(2) from None
+
+    if not plan and not use_adzuna:
+        console.print(
+            "Adzuna is retired as a source: its links go through an aggregator and often "
+            "lead nowhere to apply. Jobs already fetched from it are kept.\n"
+            "Use [bold]jm fetch-boards[/bold] instead, or pass --use-adzuna to fetch anyway."
+        )
+        raise typer.Exit(1)
 
     if plan:
         table = Table("Region", "Country", "Where", "Term", "Match", "Pages")
@@ -234,15 +245,24 @@ def label_export(
         bool, typer.Option("--force", help="Replace an existing labels file.")
     ] = False,
 ) -> None:
-    """Write a file of scored jobs for you to label (scores hidden, order shuffled)."""
+    """Write a file of scored jobs for you to label (scores hidden, order shuffled).
+
+    Only jobs still open and seen in the last STALE_DAYS days, and not already labeled in
+    the main labels file, so the list holds jobs you could still apply to."""
     settings = Settings.from_env()
     conn = db.connect(settings.db_path)
     try:
         rows = db.scored_jobs(conn)
     finally:
         conn.close()
+    open_since = (datetime.now(UTC) - timedelta(days=STALE_DAYS)).isoformat(timespec="seconds")
+    labeled = set()
+    if labels.DEFAULT_LABELS_PATH.exists():
+        labeled = {lab.job_id for lab in labels.read_labels(labels.DEFAULT_LABELS_PATH).labels}
+    rows = [r for r in rows if r["closed_at"] is None and r["last_seen"] >= open_since
+            and r["id"] not in labeled]
     if not rows:
-        console.print("No scored jobs yet; run `jm filter` and `jm score` first.")
+        console.print("No open, unlabeled scored jobs; run `jm filter` and `jm score` first.")
         raise typer.Exit(1)
     picked = labels.sample_for_labeling(rows, count)
     try:
@@ -325,6 +345,9 @@ def label_eval(path: LabelsOption = labels.DEFAULT_LABELS_PATH) -> None:
         )
 
 
+STALE_DAYS = 10  # a job not seen at its source for longer is treated as gone
+
+
 @app.command("list")
 def list_jobs(
     rejected: Annotated[bool, typer.Option("--rejected", help="Show rejected jobs.")] = False,
@@ -343,7 +366,7 @@ def list_jobs(
     stale_days: Annotated[
         float, typer.Option(help="Hide jobs not seen at their source for this many days "
                             "(boards are re-read every 7).")
-    ] = 10,
+    ] = STALE_DAYS,
     include_closed: Annotated[
         bool, typer.Option("--include-closed", help="Also show closed and stale jobs.")
     ] = False,
